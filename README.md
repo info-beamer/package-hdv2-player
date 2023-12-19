@@ -37,7 +37,8 @@ that things might not always 100% work. Feedback is very welcome.
 ## Creating a content cycle
 
 You create a content cycle similar to other package (like the HD player for
-example). Each item is individually scheduled.
+example). Each item is individually scheduled. Embedded playlists provide
+bring their own scheduling with them.
 
 ### Fullscreen slots
 
@@ -290,7 +291,7 @@ devices to act as a single screen area for a video wall type setup.
 
 ## Fullscreen content settings
 
-By default each device will play from the primary default content set in each
+By default each device will play from the primary default content configured in each
 fullscreen slot. With this setting you can specify that a device should play
 the specifed alternative content instead if configured for a slot. In case of a
 food menu with 3 side-by-side displays it might for example make sense to use
@@ -303,12 +304,14 @@ which display is used for playback.
 
 As already discussed in the playlist configuration above, each playlist slot can specify
 alternative content. You can use the "Preferred alternative" dropdown to select which
-of those alternative content the device should play.
+of those alternative content the device should play. If a playlist slot doesn't have
+any configured content for the selected alternative, the device will play the default
+content instead.
 
 ## Debugging
 
 You can identify a device and show various debugging values by clicking on the "Identify screen"
-button. This will show an overlay above the normal content on the device for the next 60 seconds.
+button. This will show an overlay above the normal content on the device for the next 3 minutes.
 
 ## Synchronization Status
 
@@ -341,7 +344,37 @@ a 2x2 video wall can be set up as follows:
    dropdown. Select the correct 2x2 option for each of the four devices, then click on
    "Save device customization".
 
+# FAQ
+
+## My content isn't synced
+
+This packages uses Peer-to-Peer communication between devices for synchronization. This
+is necessary due to the potentially complex scheduling of individual items. When a setup
+is installed on a group of devices in a local network, they automatically select a leader
+device. This leader device then controls the playback of all other devices running the
+same setup. A usable network environment is required for this: When you visit a device's
+detail page, in the Peer-to-Peer information on the right side should show all participating
+devices. If you only see a single device, this usually means that the device is isolated
+for some reason and cannot contact other devices. If you're running an installation on
+a WiFi network, the client isolation feature of WiFi might be the reason for that.
+
+Similarly you can see information about the synchronization of your devices on the 'Content
+Player' section of each device's detail page. It also shows the number of detected peers
+for the installed setup. The number should be equal to the number of devices you want
+to sychronize.
+
+Another reason might be packet loss. The sychronization requires devices talking to each
+other. If a lot of transmitted information is lost due to packet loss, synchronization
+might not work and you might see devices reverting back to playing the fallback content.
+
+Be sure the connectivity of the devices is working well: Either use Ethernet, which usually
+doesn't have this problem, or be sure to use a WiFi network with a strong enough signal.
+
 # Changelog
+
+## Version alpha-6
+
+ * Documentation and first release cleanup.
 
 ## Version alpha-5
 

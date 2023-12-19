@@ -463,7 +463,7 @@
         "hint": "If the same content plays across consecutive slots on the same display, don't restart but continue playback, fusing the playback across slots.",
         "type": "select",
         "options": [
-            ["never", "Force per item"],
+            ["never", "Force per item playback"],
             ["primary", "Across primary slots"],
             ["overlays", "Across overlays"],
             ["all", "Across all content"]
