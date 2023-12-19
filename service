@@ -1,0 +1,661 @@
+#!/usr/bin/python
+import sys; sys.path.insert(0, '.pylib')
+import os, sys, traceback, hashlib, imp, re, shutil, json, time, threading
+from collections import namedtuple, defaultdict, OrderedDict
+import Queue
+from cStringIO import StringIO
+
+from hosted import (
+    config, node, monotonic_time,
+    config_watcher, Configuration,
+    device as local_device
+)
+from hosted.p2p import (
+    OrderedEventGroup,
+    ChunkServer,
+    ChunkClient,
+)
+
+SERIAL = os.environ['SERIAL']
+
+log_lock = threading.Lock()
+def log(msg, name='controller'):
+    with log_lock:
+        print >>sys.stderr, "[{}] {}".format(name, msg)
+
+class Plugins(object):
+    PluginInfo = namedtuple("PluginInfo", "path source chksum full_name name import_name package_name")
+    LoadedPlugin = namedtuple("LoadedPlugin", "info instance api")
+
+    def __init__(self, api_factory, plugin_pattern='^plugin.py$'):
+        self._plugins = {}
+        self._configs = {'': config}
+        self._config_refs = defaultdict(int)
+        self._config_refs[''] += 1 # fix root config
+        self._plugin_pattern = re.compile(plugin_pattern)
+        self._api_factory = api_factory
+        self.rescan()
+
+    def rescan(self):
+        # print('[plugins] scanning..')
+        found_plugins = {}
+        for path, childs, files in os.walk("."):
+            if path == '.':
+                path = ''
+            else:
+                path = os.path.relpath(path, ".")
+            for fname in sorted(files):
+                if not self._plugin_pattern.match(fname):
+                    continue
+                with open(os.path.join(path, fname), 'rb') as f:
+                    source = f.read()
+                    module_name = os.path.splitext(fname)[0]
+                    import_name = os.path.join(path, module_name).replace('/', '.')
+                    found_plugins[import_name] = self.PluginInfo(
+                        path,
+                        source,
+                        hashlib.md5(source).hexdigest(),
+                        os.path.join(path, fname),
+                        module_name,
+                        import_name,
+                        import_name.rpartition('.')[0],
+                    )
+
+        # Check existing plugins. Unload if either disappeared or if their source
+        # checksum has changed.
+        for import_name, old_plugin in sorted(self._plugins.items()):
+            if import_name not in found_plugins or found_plugins[import_name].chksum != old_plugin.info.chksum:
+                try:
+                    log('[plugins] unloading %s (%s)' % (
+                        old_plugin.info.import_name, old_plugin.info.chksum,
+                    ))
+                    self.unload(old_plugin)
+                except:
+                    traceback.print_exc()
+                del self._plugins[import_name]
+
+        # Load all discovered plugins they are already loaded.
+        for import_name, new_plugin_info in sorted(found_plugins.items()):
+            if import_name not in self._plugins:
+                try:
+                    log('[plugins] loading %s (%s)' % (
+                        new_plugin_info.import_name, new_plugin_info.chksum,
+                    ))
+                    instance, api = self.load(new_plugin_info)
+                except:
+                    log('[plugins] failed to load %s (%s):' % (
+                        new_plugin_info.import_name, new_plugin_info.chksum,
+                    ))
+                    traceback.print_exc()
+                    instance, api = None, None
+                self._plugins[import_name] = self.LoadedPlugin(
+                    new_plugin_info, instance, api
+                )
+        # log('[plugins] scan complete')
+
+    def reference_config(self, path):
+        if self._config_refs[path] == 0:
+            new_config = self._configs[path] = Configuration(path)
+            config_watcher.watch(new_config)
+        self._config_refs[path] += 1
+        return self._configs[path]
+
+    def dereference_config(self, path):
+        self._config_refs[path] -= 1
+        if self._config_refs[path] == 0:
+            old_config = self._configs[path]
+            del self._configs[path]
+            del self._config_refs[path]
+            config_watcher.unwatch(old_config)
+
+    def load(self, plugin_info):
+        try:
+            # reference config
+            config = self.reference_config(plugin_info.path)
+
+            # Prepare loading
+            orig, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+            sys.path.insert(0, plugin_info.path)
+
+            # Create base package if not already done so
+            if plugin_info.package_name and not plugin_info.package_name in sys.modules:
+                package = sys.modules[plugin_info.package_name] = imp.new_module(plugin_info.package_name)
+                package.__path__ = [plugin_info.path]
+
+            api = self._api_factory(plugin_info, config)
+
+            # Provide a scoped fake 'player' module to each plugin
+            api_module = '.'.join(filter(None, [plugin_info.package_name, 'player_plugin']))
+            module = sys.modules[api_module] = imp.new_module(api_module)
+            module.api = api
+
+            # directly expose all bound methods within the module for direct import
+            all_api_methods = [
+                (method_name, getattr(api, method_name))
+                for method_name in dir(api)
+                if callable(getattr(api, method_name)) and not method_name.startswith('_')
+            ]
+            for method_name, method in all_api_methods:
+                setattr(module, method_name, method)
+
+            # Load the plugin
+            module = sys.modules[plugin_info.import_name] = imp.new_module(plugin_info.import_name)
+            module.__file__ = plugin_info.full_name
+            module_code = compile(plugin_info.source, plugin_info.full_name, 'exec')
+            exec(module_code, module.__dict__)
+
+            # Create an instance
+            if not hasattr(module, 'Plugin'):
+                log("[plugins] WARNING: %s has not 'Plugin' class" % plugin_info.import_name)
+            return module.Plugin(), api
+        except:
+            del sys.modules[plugin_info.import_name]
+            self.dereference_config(plugin_info.path)
+            raise
+        finally:
+            del sys.modules[api_module]
+            sys.path.remove(plugin_info.path)
+            sys.dont_write_bytecode = orig
+
+    def unload(self, plugin):
+        if not plugin.instance:
+            return
+        try:
+            if hasattr(plugin.instance, 'unload'):
+                plugin.instance.unload()
+        finally:
+            self.dereference_config(plugin.info.path)
+            plugin.api.shutdown()
+            del sys.modules[plugin.info.import_name]
+
+    def list_all(self):
+        log('--[ loaded plugins ]---------------------')
+        for import_name, plugin in sorted(self._plugins.items()):
+            log('%s -> %s (%s)' % (import_name, plugin.instance, plugin.info.path))
+        log('-----------------------------------------')
+
+    def __iter__(self):
+        for import_name, plugin in sorted(self._plugins.items()):
+            yield plugin.instance
+
+    def get_instance_by_import_name(self, import_name):
+        plugin_info = self._plugins.get(import_name)
+        if plugin_info is None or plugin_info.instance is None:
+            return None
+        return plugin_info.instance
+
+class TVPower(object):
+    def __init__(self):
+        log('Turning screen on')
+        local_device.turn_screen_on()
+        self._is_on = True
+    def set(self, be_on):
+        if be_on ^ self._is_on:
+            log('Turning screen to be on: %s' % (be_on,))
+            local_device.screen(be_on)
+            self._is_on = be_on
+    def on(self):
+        self.set(True)
+    def off(self):
+        self.set(False)
+
+########################################
+
+lua, wall, plugins = None, None, None
+
+class StopThread(Exception):
+    pass
+
+class StoppableThread(object):
+    def __init__(self, fn, *args):
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self.runner, args=(fn, args))
+        self._thread.daemon = True
+        self._thread.start()
+
+    def join(self):
+        self._stop.set()
+        self._thread.join()
+
+    def runner(self, fn, args):
+        try:
+            fn(self._stop.is_set, *args)
+        except StopThread as err:
+            # log("thread stop signal: %s" % (err,))
+            pass
+        except Exception as err:
+            log("Thread crashed: %s" % (err,))
+            traceback.print_exc()
+
+class API(object):
+    def __init__(self, plugin_info, config):
+        self._plugin_info = plugin_info
+        self._config = config
+
+        self._loaded_configs = OrderedDict()
+
+        self.running = True
+        self._workers = []
+        self.start_worker(self._config_watcher)
+
+    def log(self, msg):
+        log('[plugin:%s] %s' % (self._plugin_info.import_name, msg))
+
+    @property
+    def local_device(self):
+        return local_device
+
+    def local_time(self):
+        return wall.local_time()
+
+    def wall_time(self):
+        return wall.shared_leader_time.get()
+
+    def wall_os_time(self):
+        return wall.shared_os_time.get()
+
+    def sleep(self, t):
+        self.sleep_until(self.local_time() + t)
+
+    def common_config(self):
+        common_config_key = wall.get_common_config_key_by_path(
+            self._plugin_info.path
+        )
+        if common_config_key is None:
+            return None
+        return self._loaded_configs.get(common_config_key)
+
+    def local_config(self):
+        return self._config.parsed
+
+    def send_local_node_data(self, path, **data):
+        node.send_json('/' + os.path.join(self._plugin_info.path, path), data)
+
+    def get_peers(self):
+        return wall.peers
+
+    def sleep_until(self, t):
+        while 1:
+            if not self.running:
+                raise StopThread("API shutdown")
+            now = self.local_time()
+            if now >= t:
+                break
+            delta = min(1, t - now)
+            time.sleep(delta)
+
+    def start_worker(self, fn, *args):
+        self._workers.append(StoppableThread(fn, *args))
+
+    def repeated_call(self, seconds, fn, *args):
+        def runner(should_stop, seconds, args):
+            while not should_stop():
+                try:
+                    fn(*args)
+                except StopThread:
+                    raise
+                except Exception as err:
+                    traceback.print_exc()
+                self.sleep(seconds)
+        self.start_worker(runner, seconds, args)
+
+    def shutdown(self):
+        self.running = False
+        for worker in self._workers:
+            worker.join()
+
+    def tv_power(self, on):
+        wall.synced_call(0.5, '', 'tv_power', [bool(on)])
+
+    def synced_lua_call(self, offset, func_name, *args):
+        wall.synced_call(offset, '', 'lua', [func_name] + list(args))
+
+    def synced_json(self, fname, obj, success_cb, *cb_args):
+        self.synced_file(fname, json.dumps(
+            obj,
+            ensure_ascii=False,
+            separators=(',',':'),
+        ).encode('utf8'), success_cb, *cb_args)
+
+    def synced_file(self, fname, fobj, success_cb, *cb_args):
+        wall.synced_file(os.path.join(self._plugin_info.path, fname), fobj, success_cb, cb_args)
+
+    def synced_call(self, offset, func_name, *args):
+        wall.synced_call(offset, self._plugin_info.import_name, func_name, args)
+
+    def _config_watcher(self, should_stop):
+        while not should_stop():
+            config = self._config.parsed # snapshot
+            config_key = '%s:%d' % (
+                config.config_hash, config.config_rev,
+            )
+            if not config_key in self._loaded_configs:
+                self._loaded_configs[config_key] = config
+                while len(self._loaded_configs) > 5:
+                    self._loaded_configs.popitem(last=False)
+            wall.send_to_leader(
+                new_config = [
+                    config.metadata['node_path'], config_key
+                ]
+            )
+            self.sleep(2)
+
+ServerTransfer = namedtuple(
+    "ServerTransfer", 
+    "timeout change_seq fname all_peers confirmed_peers success_cb cb_args"
+)
+
+class WallChunkServer(ChunkServer):
+    def accept_client(self, addr):
+        ip, port = addr
+        for peer in wall.peers:
+            if peer.ip == ip:
+                return peer.pair_key
+        log("Rejecting unknown client %s:%s" % (ip, port))
+        return None
+
+class WallSharedTime(object):
+    def __init__(self):
+        self._local_diff = 0
+        self._target_diff = 0
+
+    def get(self):
+        return monotonic_time() + self._local_diff
+
+    def update(self, leader_time):
+        self._target_diff = leader_time - monotonic_time()
+        diff = abs(self._target_diff - self._local_diff)
+        if diff > 0.2:
+            self._jumped = True
+            self._local_diff = self._target_diff
+            log("time jump")
+        self._local_diff = self._local_diff * 0.95 + self._target_diff * 0.05
+
+class Wall(OrderedEventGroup):
+    def __init__(self):
+        super(Wall, self).__init__()
+        self._transfer_lock = threading.Lock()
+
+        self._leader_common_configs = defaultdict(dict)
+        self._common_config = {}
+
+        self._client_transfers = Queue.Queue()
+        self._chunk_client = ChunkClient()
+
+        self._server_transfers = {}
+        self._chunk_server_thread = None
+        self._chunk_server = None
+
+        self._shared_os_time = WallSharedTime()
+        self._shared_leader_time = WallSharedTime()
+
+        self._tv_power = TVPower()
+
+        thread = threading.Thread(target=self.event_handler_loop)
+        thread.daemon = True
+        thread.start()
+
+        thread = threading.Thread(target=self.chunk_client_loop)
+        thread.daemon = True
+        thread.start()
+
+        thread = threading.Thread(target=self.time_sync_loop)
+        thread.daemon = True
+        thread.start()
+
+        thread = threading.Thread(target=self.status_loop)
+        thread.daemon = True
+        thread.start()
+
+    def promote_leader(self, peer_info):
+        super(Wall, self).promote_leader(peer_info)
+        self._server_transfers = {}
+        self._chunk_server = WallChunkServer(self._port)
+        self._chunk_server_thread = StoppableThread(self.chunk_server_loop)
+
+    def demote_leader(self):
+        super(Wall, self).demote_leader()
+        self._chunk_server_thread.join()
+        self._chunk_server = None
+
+    @property
+    def shared_os_time(self):
+        return self._shared_os_time
+
+    @property
+    def shared_leader_time(self):
+        return self._shared_leader_time
+
+    def get_common_config_key_by_path(self, node_path):
+        return self._common_config.get(node_path)
+
+    def synced_call(self, offset, plugin_name, fn, args):
+        self.send_event(self.local_time() + offset, [
+            plugin_name, fn, args
+        ])
+
+    def synced_file(self, fname, fobj, success_cb, cb_args):
+        if not self.is_leader or not self._chunk_server:
+            return
+        if isinstance(fobj, str):
+            fobj = StringIO(fobj)
+        elif isinstance(fobj, unicode):
+            fobj = StringIO(fobj.encode('utf8'))
+        with self._chunk_server.create(fname) as (f, change_seq):
+            shutil.copyfileobj(fobj, f)
+        with self._transfer_lock:
+            self._server_transfers[change_seq] = ServerTransfer(
+                self.local_time() + 60,
+                change_seq, fname,
+                set(peer.device_id for peer in self.peers), set(),
+                success_cb, cb_args,
+            )
+        self.broadcast_to_all(
+            sync = change_seq,
+        )
+
+    def handle_client_transfer_complete(self, change_seq, device_id):
+        with self._transfer_lock:
+            transfer = self._server_transfers.get(change_seq)
+            if not transfer:
+                return
+            transfer.confirmed_peers.add(device_id)
+            log('synced %d/%d' % (
+                len(transfer.confirmed_peers),
+                len(transfer.all_peers),
+            ))
+            if transfer.confirmed_peers == transfer.all_peers:
+                self.synced_call(0.5, '', 'link_file', (
+                    change_seq, transfer.fname
+                ))
+
+    def handle_config_update(self, node_path, config_key, peer_info):
+        # log("config update from %r: %r" % (peer_info, config_key))
+        common_configs = self._leader_common_configs[node_path]
+
+        modified = False
+        
+        # If the notifying device doesn't already have the reported
+        # config marked as current: Update our information.
+        if common_configs.get(peer_info.device_id) != config_key:
+            common_configs[peer_info.device_id] = config_key
+            modified = True
+
+        # If there's more than one config currently active across
+        # the wall: Bail out as there can't be a common one
+        if len(set(common_configs.values())) != 1:
+            return
+
+        config_peers = set(common_configs.keys())
+        all_peers = set(
+            peer.device_id for peer in self.peers
+        )
+
+        # Remove all devices no longer in the wall group. This
+        # would otherwise prevents the config from converging
+        # to a common one once a single device goes offline.
+        for device_id in common_configs.keys():
+            if device_id not in all_peers:
+                log('lost device %r' % (device_id,))
+                del common_configs[device_id]
+                modified = True
+
+        # Something changed and all devices accounted for?
+        # Together with the '!= 1' check above this means
+        # there is now a complete group of devices sharing
+        # the same config. Propagate this information to
+        # all devices.
+        if modified and config_peers == all_peers:
+            self.synced_call(0.5, '', 'common_config', (
+                node_path, config_key
+            ))
+
+    def rpc_common_config(self, node_path, config_key):
+        self._common_config[node_path] = config_key
+
+    def rpc_link_file(self, change_seq, fname):
+        self._chunk_client.link_chunk(change_seq, fname)
+        if self.is_leader:
+            transfer = self._server_transfers.get(change_seq)
+            if not transfer:
+                return
+            del self._server_transfers[change_seq]
+            try:
+                transfer.success_cb(transfer.fname, *transfer.cb_args)
+            except Exception as err:
+                traceback.print_exc()
+
+    def rpc_lua(self, func_name, *args):
+        lua.get_method(func_name)(*args)
+
+    def rpc_leader_time(self, leader_os_time, leader_time):
+        self._shared_os_time.update(leader_os_time)
+        self._shared_leader_time.update(leader_time)
+
+    def rpc_tv_power(self, on):
+        log('tv power is %r' % (on,))
+        if on:
+            self._tv_power.on()
+        else:
+            self._tv_power.off()
+
+    def on_leader_message_non_event(self, message, peer_info):
+        if 'sync' in message:
+            self._client_transfers.put(message['sync'])
+
+    def on_peer_message(self, message, peer_info):
+        if 'chunk_received' in message:
+            self.handle_client_transfer_complete(
+                message['chunk_received'], peer_info.device_id
+            )
+        elif 'new_config' in message:
+            node_path, config_key = message['new_config']
+            self.handle_config_update(
+                node_path, config_key, peer_info
+            )
+
+    def chunk_server_loop(self, should_stop):
+        log("starting chunk server")
+        while not should_stop():
+            self._chunk_server.run(1)
+        log("stopping chunk server")
+        self._chunk_server.close()
+        self._chunk_server = None
+
+    def time_sync_loop(self):
+        while 1:
+            time.sleep(4)
+            wall.synced_call(1, '', 'leader_time', (
+                time.time()+1,
+                self.local_time()+1,
+            ))
+
+    def status_loop(self):
+        while 1:
+            node.send_json('/debug/update', dict(
+                peer = dict(
+                    serial = SERIAL,
+                    is_leader = self.is_leader,
+                ),
+                peers = [peer.debug_dict() for peer in self.peers],
+                leader = self.leader.peer_info.debug_dict() if self.leader else False,
+            ))
+
+            if self.is_leader:
+                node.send_json('/debug/update', dict(
+                    controller = dict(
+                        common_configs = self._common_config,
+                    )
+                ))
+            else:
+                node.send_json('/debug/update', dict(
+                    controller = {}
+                ))
+            try:
+                local_device.kv.update(dict(
+                    leader_id = self.leader.peer_info.device_id if self.leader else None,
+                    is_leader = ('0', '1')[self.is_leader],
+                    peers = len(self.peers),
+                ))
+            except local_device.kv.Error as err:
+                log("cannot update dashboard: %s" % (err,))
+            time.sleep(5)
+
+    # Running on all peers. Responsible for syncing up the latest
+    # files changes to the local machine and notifying the leader
+    # if the triggering change_seq has been reached.
+    def chunk_client_loop(self):
+        log("starting chunk client")
+        while 1:
+            try:
+                expected_change_seq = self._client_transfers.get(block=True, timeout=1)
+                leader = self.leader
+                synced_change_seq = self._chunk_client.sync(
+                    leader.pair_key,
+                    leader.ip, self.port,
+                    timeout=5
+                )
+                if synced_change_seq >= expected_change_seq:
+                    self.send_to_leader(
+                        chunk_received = expected_change_seq
+                    )
+            except Queue.Empty:
+                time.sleep(1)
+            except Exception as err:
+                traceback.print_exc()
+                time.sleep(5)
+
+    # Running on all peers
+    def event_handler_loop(self):
+        log('event loop running')
+        for delay, (plugin_name, fn, args) in self.events():
+            log("event %s:%s delivery time offset is %f" % (plugin_name, fn, delay,))
+            if plugin_name == '':
+                instance = self
+            else:
+                instance = plugins.get_instance_by_import_name(plugin_name)
+                if instance is None:
+                    continue
+            method_name = 'rpc_' + fn
+            if not hasattr(instance, method_name):
+                continue
+            try:
+                getattr(instance, method_name)(*args)
+            except Exception as err:
+                traceback.print_exc()
+
+lua = node.rpc()
+
+wall = Wall()
+wall.wait_for_role()
+
+plugins = Plugins(
+    API,
+    plugin_pattern='^zz-plugin(-.+)?.py$'
+)
+
+plugins.list_all()
+
+while 1:
+    time.sleep(2)
+    plugins.rescan()

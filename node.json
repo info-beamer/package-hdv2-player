@@ -1,0 +1,502 @@
+{
+    "name": "Content Player",
+    "control_ui": "control.html",
+    "permissions": {
+        "network": "Needs network access for synchronization across devices"
+    },
+    "optional": [
+        "fallback.*.jpg",
+        "control.html",
+        "doc-*"
+    ],
+    "scratch_scope": "package",
+    "options": [{
+        "title": "Content configuration",
+        "type": "section"
+    }, {
+        "title": "Content cycle",
+        "tab": "Primary content",
+        "name": "playlist",
+        "type": "list",
+        "itemname": "Slot",
+        "adders": [{
+            "label": "fullscreen slot",
+            "help": "Add an asset to play fullscreen on each individual display.",
+            "item": {
+                "slot_type": "fullscreen",
+                "schedule": "always"
+            },
+            "select": ["asset", {
+                "asset_id": "asset",
+                "duration": "duration"
+            }]
+        }, {
+            "label": "> fullscreen with alternatives",
+            "help": "Adds a fullscreen slot with enabled alternative settings enabled.",
+            "item": {
+                "slot_type": "fullscreen",
+                "fullscreen_slot": ["alts"],
+                "schedule": "always"
+            },
+            "select": ["asset", {
+                "asset_id": "asset",
+                "duration": "duration"
+            }]
+        }, {
+            "label": "> video wall slot",
+            "help": "Add an asset that plays according to the display size configuration made on each device's config page.",
+            "item": {
+                "slot_type": "wall",
+                "schedule": "always"
+            },
+            "select": ["asset", {
+                "asset_id": "asset",
+                "duration": "duration"
+            }]
+        }],
+        "items": [{
+            "title": "Slot Type",
+            "ui_width": 0,
+            "name": "slot_type",
+            "type": "select",
+            "options": [
+                ["fullscreen", "Fullscreen"],
+                ["wall", "Video wall"]
+            ],
+            "default": "fullscreen"
+        }, {
+            "type": "section",
+            "name": "fullscreen_slot",
+            "ui_type": "small",
+            "hint": "This asset will play fullscreen on each assigned device.",
+            "condition": ["==", ["config", "slot_type", "value"], "fullscreen"],
+            "title": "[monitor] Fullscreen playback",
+            "toggles": [{
+                "key": "tags",
+                "name": "Extra tags",
+                "help": "Specify extra tags applied to this slot, regardless of the tags of the asset."
+            }, {
+                "key": "alts",
+                "name": "Alternative fullscreen content",
+                "help": "Assign alternative content to different displays. You can control which device displays which alternative on each device's configuration page."
+            }]
+        }, {
+            "type": "section",
+            "name": "wall_slot",
+            "ui_type": "small",
+            "hint": "This asset will potentially play across multiple displays depending on each device's screen configuration on each device's configuration page.",
+            "condition": ["==", ["config", "slot_type", "value"], "wall"],
+            "title": "[layout] Video wall playback",
+            "toggles": [{
+                "key": "tags",
+                "name": "Extra tags",
+                "help": "Specify extra tags applied to this slot, regardless of the tags of the asset"
+            }]
+        }, {
+            "title": "Asset",
+            "ui_width": 6,
+            "name": "asset",
+            "type": "resource",
+            "valid": ["image", "video", "child"],
+            "features": ["image4k"],
+            "default": "empty.png"
+        }, {
+            "title": "Play time",
+            "ui_width": 2,
+            "name": "duration",
+            "type": "duration",
+            "hint": "How long should this item be displayed on screen. Use 0 to use automatically selected duration",
+            "default": 10,
+            "suggestions": [10, 20, 60, 120]
+        }, {
+            "title": "Schedule",
+            "ui_width": 4,
+            "name": "schedule",
+            "type": "schedule",
+            "default": "always"
+        }, {
+            "title": "",
+            "condition": ["&&", ["config", "asset"], ["config", "asset", "is_child"]],
+            "name": "child_config",
+            "type": "custom",
+            "child_ref": "asset",
+            "page": "zz-plugin.html",
+            "default": {}
+        }, {
+            "title": "",
+            "name": "alternatives",
+            "condition": ["config", "fullscreen_slot", "alts"],
+            "type": "list",
+            "itemname": "Alternative asset",
+            "allow_playlist": false,
+            "adders": [{
+                "label": "alternative",
+                "item": {},
+                "select": ["asset", {
+                    "asset_id": "asset"
+                }]
+            }, {
+                "label": "> playlist",
+                "item": {
+                    "alt_type": "playlist"
+                },
+                "select": ["playlist", {
+                    "playlist_id": "playlist"
+                }]
+            }],
+            "items": [{
+                "title": "Alt Type",
+                "ui_width": 0,
+                "name": "alt_type",
+                "type": "select",
+                "options": [
+                    ["item", "Single Item"],
+                    ["playlist", "Playlist"]
+                ],
+                "default": "item"
+            }, {
+                "title": "Asset",
+                "ui_width": 6,
+                "name": "asset",
+                "condition": ["==", ["config", "alt_type", "value"], "item"],
+                "type": "resource",
+                "valid": ["image", "video", "child"],
+                "features": ["image4k"],
+                "default": "empty.png"
+            }, {
+                "title": "Playlist",
+                "ui_width": 6,
+                "name": "playlist",
+                "condition": ["==", ["config", "alt_type", "value"], "playlist"],
+                "type": "playlist"
+            }, {
+                "title": "Alternative",
+                "ui_width": 6,
+                "name": "alternative_idx",
+                "hint": "Configure a device to prefer this alternative on its device detail page and it will play this asset instead of the default asset.",
+                "type": "select",
+                "options": [
+                    ["default", "Default"],
+                    [1, "Alternative 1"],
+                    [2, "Alternative 2"],
+                    [3, "Alternative 3"],
+                    [4, "Alternative 4"],
+                    [5, "Alternative 5"],
+                    [6, "Alternative 6"],
+                    [7, "Alternative 7"],
+                    [8, "Alternative 8"]
+                ],
+                "default": 1
+            }, {
+                "title": "Options",
+                "condition": ["config", "asset", "is_child"],
+                "name": "child_config",
+                "type": "custom",
+                "child_ref": "asset",
+                "page": "zz-plugin.html",
+                "default": {}
+            }]
+        }, {
+            "title": "Extra tags applied to this slot",
+            "condition": ["||", 
+                ["config", "fullscreen_slot", "tags"],
+                ["config", "wall_slot", "tags"]
+            ],
+            "name": "extra_tags",
+            "type": "string",
+            "ui_width": 12,
+            "ui_type": "asset-tags",
+            "default": ""
+        }]
+    }, {
+        "title": "Overlays in low to high priority order",
+        "name": "overlay_groups",
+        "tab": "Overlays",
+        "type": "list",
+        "itemname": "Overlay group",
+        "adders": [{
+            "label": "overlay group",
+            "item": {}
+        }, {
+            "label": "> preconfigured progress bar",
+            "help": "Adds a overlay containing a preconfigured progress bar",
+            "item": {
+                "overlays": [{
+                    "asset": "progressbar",
+                    "child_config": {
+                        "mode": "bar_thin_white"
+                    }
+                }]
+            }
+        }],
+        "items": [{
+            "name": "_id",
+            "type": "id",
+            "title": "id"
+        }, {
+            "title": "[layers] Overlay group",
+            "ui_type": "small",
+            "name": "overlay_group",
+            "type": "section",
+            "toggles": [{
+                "key": "conditional",
+                "name": "Conditional overlay",
+                "help": "Make the overlay appear depending on one or more conditions"
+            }]
+        }, {
+            "title": "Overlays added from back to front",
+            "name": "overlays",
+            "type": "list",
+            "itemname": "Overlay",
+            "adders": [{
+                "label": "Overlay",
+                "help": "Add an overlay",
+                "item": {},
+                "select": ["asset", {
+                    "asset_id": "asset"
+                }]
+            }],
+            "items": [{
+                "name": "_id",
+                "type": "id",
+                "title": "id"
+            }, {
+                "title": "Overlay content",
+                "ui_width": 12,
+                "ui_prio": 1,
+                "name": "asset",
+                "type": "resource",
+                "valid": ["child", "image"],
+                "features": ["image4k"],
+                "default": "example"
+            }, {
+                "type": "section",
+                "name": "image_slot",
+                "ui_prio": 0,
+                "ui_type": "small",
+                "condition": ["config", "asset", "is_image"],
+                "title": "Image asset"
+            }, {
+                "type": "section",
+                "name": "video_slot",
+                "ui_prio": 0,
+                "ui_type": "small",
+                "condition": ["config", "asset", "is_video"],
+                "title": "Video asset"
+            }, {
+                "type": "section",
+                "name": "child_slot",
+                "ui_prio": 0,
+                "ui_type": "small",
+                "condition": ["config", "asset", "is_child"],
+                "title": "Plugin"
+            }, {
+                "title": "",
+                "condition": ["config", "asset", "is_child"],
+                "name": "child_config",
+                "ui_prio": 2,
+                "type": "custom",
+                "child_ref": "asset",
+                "page": "zz-plugin.html",
+                "default": {}
+            }]
+        }, {
+            "title": "Show overlay only if all of the following conditions are true",
+            "name": "conditions",
+            "condition": ["config", "overlay_group", "conditional"],
+            "type": "list",
+            "itemname": "Condition",
+            "ui_type": "rows",
+            "adders": [{
+                "label": "Condition",
+                "help": "Add a condition",
+                "item": {}
+            }],
+            "items": [{
+                "title": "",
+                "ui_width": 5,
+                "name": "condition_type",
+                "type": "select",
+                "options": [
+                    ["slot_type", "Slot type is"],
+                    ["not_slot_type", "Slot type is not"],
+                    ["content_type", "Content type is"],
+                    ["not_content_type", "Content type is not"],
+                    ["tags_any", "Content has any of these tags"],
+                    ["tags_none", "Content has none of these tags"],
+                    ["schedule", "Playback starts at"]
+                ],
+                "default": "slot_type"
+            }, {
+                "title": "",
+                "ui_width": 7,
+                "name": "slot_type",
+                "condition": ["||",
+                    ["==", ["config", "condition_type", "value"], "slot_type"],
+                    ["==", ["config", "condition_type", "value"], "not_slot_type"]
+                ],
+                "type": "select",
+                "options": [
+                    ["fullscreen", "fullscreen content"],
+                    ["wall", "wall content"]
+                ],
+                "default": "fullscreen"
+            }, {
+                "title": "",
+                "ui_width": 7,
+                "name": "content_type",
+                "condition": ["||",
+                    ["==", ["config", "condition_type", "value"], "content_type"],
+                    ["==", ["config", "condition_type", "value"], "not_content_type"]
+                ],
+                "type": "select",
+                "options": [
+                    ["image", "image content"],
+                    ["video", "video content"]
+                ],
+                "default": "image"
+            }, {
+                "title": "",
+                "condition": ["||",
+                    ["==", ["config", "condition_type", "value"], "tags_any"],
+                    ["==", ["config", "condition_type", "value"], "tags_none"]
+                ],
+                "name": "tags",
+                "type": "string",
+                "ui_width": 7,
+                "ui_type": "asset-tags",
+                "default": ""
+            }, {
+                "title": "",
+                "condition": ["==", ["config", "condition_type", "value"], "schedule"],
+                "ui_width": 7,
+                "name": "schedule",
+                "type": "schedule",
+                "default": "always"
+            }]
+        }]
+    },
+
+    {
+        "title": "Playback settings",
+        "intro": "You can find additional per-device settings on the detail page of a device after assigning this setup to it.",
+        "name": "settings",
+        "type": "section"
+    }, {
+        "title": "Horizontal fallback",
+        "ui_width": 4,
+        "tab": "General",
+        "name": "fallback_h",
+        "type": "resource",
+        "hint": "Shown on desync, while starting, when nothing scheduled, etc..",
+        "valid": ["image"],
+        "default": "fallback_h.jpg"
+    }, {
+        "title": "Vertical fallback",
+        "ui_width": 4,
+        "tab": "General",
+        "name": "fallback_v",
+        "type": "resource",
+        "hint": "Shown on desync, while starting, when nothing scheduled, etc..",
+        "valid": ["image"],
+        "default": "fallback_v.jpg"
+    }, {
+        "title": "When playing only fallback",
+        "ui_width": 4,
+        "name": "blank",
+        "tab": "General",
+        "info": "Turn off attached display",
+        "doc_link": true,
+        "type": "select",
+        "options": [
+            [false, "Show fallback content"],
+            [true, "Turn off display"]
+        ],
+        "default": false
+    }, {
+        "title": "Content scaling",
+        "ui_width": 4,
+        "tab": "Advanced",
+        "name": "max_stretch",
+        "doc_link": true,
+        "type": "select",
+        "options": [
+            [1, "Preserve aspect ratio"],
+            [1.05, "Max 5% stretch"],
+            [1.10, "Max 10% stretch"],
+            [1.15, "Max 15% stretch"],
+            [1.20, "Max 20% stretch"],
+            [1000, "Fill available space"]
+        ],
+        "default": "keep_aspect"
+    }, {
+        "title": "Virtual resolution",
+        "tab": "Advanced",
+        "ui_width": 4,
+        "name": "virtual_resolution",
+        "hint": "You can force a virtual resolution here to make the presentation independant from the screen resolution of the device(s).",
+        "type": "select",
+        "options": [
+            [[1920, 1080], "Force 1920x1080 (16:9)"],
+            [[1280, 1024], "Force 1280x1024 (5:4)"],
+            [[1024,  768], "Force 1024x768 (4:3)"],
+            [false,        "Use detected native screen"]
+        ],
+        "default": [1920, 1080]
+    }, {
+        "title": "Audio",
+        "ui_width": 4,
+        "tab": "Advanced",
+        "name": "audio",
+        "doc_link": true,
+        "type": "select",
+        "options": [
+            [true, "Audio enabled"],
+            [false, "Audio disabled"]
+        ],
+        "default": true
+    }, {
+        "title": "Playback slot fusing",
+        "tab": "Advanced",
+        "ui_width": 4,
+        "name": "fuse",
+        "hint": "If the same content plays across consecutive slots on the same display, don't restart but continue playback, fusing the playback across slots.",
+        "type": "select",
+        "options": [
+            ["never", "Force per item"],
+            ["primary", "Across primary slots"],
+            ["overlays", "Across overlays"],
+            ["all", "Across all content"]
+        ],
+        "default": "all"
+    }, {
+        "title": "Fade/Reveal effect",
+        "tab": "Advanced",
+        "ui_width": 4,
+        "name": "reveal",
+        "doc_link": true,
+        "type": "select",
+        "options": [
+            [[0, "instant"], "Instant transitions"],
+            [[0.5, "linear"], "0.5s linear"],
+            [[1, "linear"], "1s linear"],
+            [[0.5, "inOutQuad"], "0.5s smooth"],
+            [[1, "inOutQuad"], "1s smooth"],
+            [[0.5, "outExpo"], "0.5s expo"],
+            [[1, "outExpo"], "1s expo"]
+        ],
+        "default": [0, "instant"]
+    }, {
+        "title": "Remote control",
+        "ui_width": 4,
+        "tab": "Advanced",
+        "name": "remote_port",
+        "hint": "Opens UDP to network. Can be used to manually trigger configured playlist slots.",
+        "doc_link": true,
+        "type": "select",
+        "options": [
+            [0, "Not yet supported"]
+        ],
+        "default": 0
+    }]
+}

@@ -1,0 +1,50 @@
+<html>
+  <body>
+    <div class='row'>
+      <div class='col-xs-3'>
+        <label>Left margin %</label>
+        <input type='number' id='x1' min=0 max=100 placeholder='In percent' class='form-control'>
+      </div>
+      <div class='col-xs-3'>
+        <label>Top margin %</label>
+        <input type='number' id='y1' min=0 max=100 placeholder='In percent' class='form-control'>
+      </div>
+      <div class='col-xs-3'>
+        <label>Right margin %</label>
+        <input type='number' id='x2' min=0 max=100 placeholder='In percent' class='form-control'>
+      </div>
+      <div class='col-xs-3'>
+        <label>Bottom margin %</label>
+        <input type='number' id='y2' min=0 max=100 placeholder='In percent' class='form-control'>
+      </div>
+    </div>
+    <div id='bottom'></div>
+    <script src='hosted.js'></script>
+    <script>
+      let x1 = document.getElementById('x1'),
+          y1 = document.getElementById('y1'),
+          x2 = document.getElementById('x2'),
+          y2 = document.getElementById('y2')
+      ib.setDefaultStyle()
+      ib.onConfigUpdate(config => {
+        x1.value = config.x1 || 0
+        y1.value = config.y1 || 0
+        x2.value = config.x2 || 0
+        y2.value = config.y2 || 0
+      })
+      const change = () => {
+        ib.set_config({
+          x1: parseInt(x1.value),
+          y1: parseInt(y1.value),
+          x2: parseInt(x2.value),
+          y2: parseInt(y2.value),
+        })
+      }
+      x1.addEventListener("change", change)
+      y1.addEventListener("change", change)
+      x2.addEventListener("change", change)
+      y2.addEventListener("change", change)
+    </script>
+  </body>
+</html>
+

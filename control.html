@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      .status {
+        padding: 7px 6px;
+        font-size: 14px;
+        color: green;
+        display: inline-block;
+        text-align: center;
+        background-color: gray;
+        border-radius: 5px;
+      }
+      hr {
+        margin: 0 0 8px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='panel panel-default display'>
+      <div class='panel-heading'>
+        Display placement / orientation
+      </div>
+      <div class='panel-body'>
+        <div class='row'>
+          <div class='col-md-8'>
+            <div class='row'>
+              <div class='col-md-2'>
+                <label>x1</label>
+                <input type='number' class='form-control x1'>
+              </div>
+              <div class='col-md-2'>
+                <label>y1</label>
+                <input type='number' class='form-control y1'>
+              </div>
+              <div class='col-md-2'>
+                <label>x2</label>
+                <input type='number' class='form-control x2'>
+              </div>
+              <div class='col-md-2'>
+                <label>y2</label>
+                <input type='number' class='form-control y2'>
+              </div>
+              <div class='col-md-4'>
+                <label>Apply template</label>
+                <select class="form-control template">
+                  <option value="">Template</option>
+                  <optgroup label="Fullscreen">
+                    <option value='{"x1":0,"y1":0,"x2":100,"y2":100}'>Use full physical resolution</option>
+                  </optgroup>
+                  <optgroup label="Video wall processing">
+                    <option value='{"x1":0,"y1":0,"x2":30,"y2":30}'>Crop top-left 30%</option>
+                  </optgroup>
+                  <optgroup label="Overscan compensation">
+                    <option value='{"x1":2,"y1":2,"x2":98,"y2":98}'>2% overscan</option>
+                    <option value='{"x1":5,"y1":5,"x2":95,"y2":95}'>5% overscan</option>
+                    <option value='{"x1":6,"y1":6,"x2":94,"y2":94}'>6% overscan</option>
+                    <option value='{"x1":10,"y1":10,"x2":90,"y2":90}'>10% overscan</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class='col-md-4'>
+            <label>Clockwise rotation</label>
+            <select id='r' class="form-control">
+              <option value="0">
+                None
+              </option>
+              <option value="90">
+                90°
+              </option>
+              <option value="180">
+                180°
+              </option>
+              <option value="270">
+                270°
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class='row'>
+      <div class='col-md-9'>
+        <div class='panel panel-default wall'>
+          <div class='panel-heading'>
+            Wall content settings
+          </div>
+          <div class='panel-body'>
+            <div class='row'>
+              <div class='col-md-2'>
+                <label>Scaling</label>
+                <select class="form-control" id='scale_up'>
+                  <option value='stretch'>Stretch</option>
+                  <option value='aspect_up'>Upscale</option>
+                  <option value='aspect_down'>Downscale</option>
+                </select>
+              </div>
+              <div class='col-md-2'>
+                <label>x1</label>
+                <input type='number' class='form-control x1'>
+              </div>
+              <div class='col-md-2'>
+                <label>y1</label>
+                <input type='number' class='form-control y1'>
+              </div>
+              <div class='col-md-2'>
+                <label>x2</label>
+                <input type='number' class='form-control x2'>
+              </div>
+              <div class='col-md-2'>
+                <label>y2</label>
+                <input type='number' class='form-control y2'>
+              </div>
+              <div class='col-md-2'>
+                <label>Apply template</label>
+                <select class="form-control template">
+                  <option value="">Template</option>
+                  <optgroup label="Single screen">
+                    <option value='{"x1":0,"y1":0,"x2":100,"y2":100}'>Single display</option>
+                  </optgroup>
+                  <optgroup label="Two screen layouts">
+                    <option value='{"x1":0,"y1":0,"x2":200,"y2":100}'>Left of two horizontal displays</option>
+                    <option value='{"x1":-100,"y1":0,"x2":100,"y2":100}'>Right of two horizontal displays</option>
+                    <option value='{"x1":0,"y1":0,"x2":100,"y2":200}'>Top of two vertical displays</option>
+                    <option value='{"x1":0,"y1":-100,"x2":100,"y2":100}'>Bottom of two vertical displays</option>
+                  </optgroup>
+                  <optgroup label="2x2 Wall">
+                    <option value='{"x1":0,"y1":0,"x2":200,"y2":200}'>Top left of 2x2 displays</option>
+                    <option value='{"x1":-100,"y1":0,"x2":100,"y2":200}'>Top right of 2x2 displays</option>
+                    <option value='{"x1":0,"y1":-100,"x2":200,"y2":100}'>Bottom left of 2x2 displays</option>
+                    <option value='{"x1":-100,"y1":-100,"x2":100,"y2":100}'>Bottom right of 2x2 displays</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class='col-md-3'>
+        <div class='panel panel-default'>
+          <div class='panel-heading'>
+            Fullscreen content settings
+          </div>
+          <div class='panel-body'>
+            <label>Preferred alternative (if available)</label>
+            <select id='alt' class="form-control">
+              <option value="default">None (play default content)</option>
+              <option value="1">Play alternative 1</option>
+              <option value="2">Play alternative 2</option>
+              <option value="3">Play alternative 3</option>
+              <option value="4">Play alternative 4</option>
+              <option value="5">Play alternative 5</option>
+              <option value="6">Play alternative 6</option>
+              <option value="7">Play alternative 7</option>
+              <option value="8">Play alternative 8</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class='row'>
+      <div class='col-md-4'>
+        <label>Synchronization status</label>
+        <div>
+          <div class='status' id='status'>Loading..</div>
+          <button class='btn btn-default' id='leader'>Loading..</button>
+        </div>
+      </div>
+      <div class='col-md-3 col-md-offset-1'>
+        <label>Debugging overlay</label>
+        <div>
+          <div class="btn-group">
+            <button id='debug-on' class='btn btn-default'>Show for 3 minutes</button>
+            <button id='debug-off' class='btn btn-default'>Hide</button>
+          </div>
+        </div>
+      </div>
+      <div class='col-md-4'>
+        <label>&nbsp;</label>
+        <div class='text-right'>
+          <div class="btn-group">
+            <button id='wipe' class='btn btn-default'>Reset to default</button>
+            <button id='save' class='btn btn-primary'>Save device customizations</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class='popup'></div>
+
+    <!-- Provides the interface to info-beamer hosted -->
+    <script src="hosted.js"></script>
+
+    <script>
+      "strict";
+      ib.setDefaultStyle()
+
+      function int_from_str(s) {
+        let i = parseInt(s)
+        if (isNaN(i)) {
+          throw `Invalid value '${s}'`
+        }
+        return i
+      }
+
+      function QuadEntry(base_e, source_obj) {
+        let e_x1 = base_e.querySelector('.x1'),
+            e_y1 = base_e.querySelector('.y1'),
+            e_x2 = base_e.querySelector('.x2'),
+            e_y2 = base_e.querySelector('.y2'),
+            e_tmpl = base_e.querySelector('.template')
+
+        e_x1.value = source_obj.x1 || 0
+        e_y1.value = source_obj.y1 || 0
+        e_x2.value = source_obj.x2 || 100
+        e_y2.value = source_obj.y2 || 100
+
+        let update = (x1, y1, x2, y2) => {
+          e_x1.value = x1
+          e_y1.value = y1
+          e_x2.value = x2
+          e_y2.value = y2
+        }
+
+        let reset = () => update(0, 0, 100, 100)
+
+        let as_obj = () => {
+          let obj = {
+            x1: int_from_str(e_x1.value),
+            y1: int_from_str(e_y1.value),
+            x2: int_from_str(e_x2.value),
+            y2: int_from_str(e_y2.value),
+          }
+          if (obj.x2 <= obj.x1) {
+            throw 'Invalid horizontal values: Negative or zero'
+          }
+          if (obj.y2 <= obj.y1) {
+            throw 'Invalid vertical values: Negative or zero'
+          }
+          return obj
+        }
+
+        e_tmpl && e_tmpl.addEventListener('change', e => {
+          let x1, y1, x2, y2
+          let tmpl = e.target.value
+          let selected_layout = e.target.options[e.target.selectedIndex].innerText
+          if (tmpl == '')
+            return
+          let pos = JSON.parse(tmpl)
+          update(pos.x1, pos.y1, pos.x2, pos.y2)
+          e_tmpl.value = ''
+          ib.notification.success(`Applied layout template: ${selected_layout}`)
+        })
+        return {update, reset, as_obj}
+      }
+
+      let e_r = document.getElementById('r'),
+          e_scale_up = document.getElementById('scale_up'),
+          e_alt = document.getElementById('alt'),
+          e_save = document.getElementById('save'),
+          e_wipe = document.getElementById('wipe'),
+          e_status = document.getElementById('status'),
+          e_leader = document.getElementById('leader'),
+          e_dbg_on = document.getElementById('debug-on'),
+          e_dbg_off = document.getElementById('debug-off')
+
+      let leader_id = null
+
+      async function update() {
+        let kv = await ib.device_kv([
+            'all_synced',
+            'is_leader',
+            'peers',
+            'leader_id',
+        ])
+
+        let is_leader = kv.is_leader == '1'
+        let all_synced = kv.all_synced == '1'
+        let num_peers = parseInt(kv.peers) || 0
+
+        e_status.style.backgroundColor = '#90ee90'
+        e_status.innerText = `${num_peers} peers`
+        if (is_leader) {
+          e_leader.disabled = 'disable'
+          e_leader.innerText = "This is the leader device"
+          leader_id = null
+        } else {
+          e_leader.disabled = ''
+          e_leader.innerText = `Go to leader device ${kv.leader_id}..`
+          leader_id = kv.leader_id
+        }
+      }
+
+      ib.ready.then(async () => {
+        update()
+        setInterval(update, 5000)
+
+        let dd = await ib.device_data()
+        let wall_pos = QuadEntry(document.querySelector(".wall"), dd.wall || {})
+        let display_pos = QuadEntry(document.querySelector(".display"), dd.display || {})
+        e_r.value = dd.rotation || 0
+        e_scale_up.value = dd.wall && dd.wall.scale_up || 'stretch'
+        e_alt.value = dd.alternative_idx || 'default'
+
+        e_leader.addEventListener('click', e => {
+          if (leader_id != null) {
+            ib.open.device(leader_id)
+          }
+        })
+
+        e_dbg_on.addEventListener('click', e => {
+          ib.node_command("debug/show", 180)
+        })
+
+        e_dbg_off.addEventListener('click', e => {
+          ib.node_command("debug/show", 0)
+        })
+
+        e_wipe.addEventListener('click', e => {
+          wall_pos.reset()
+          display_pos.reset()
+          e_r.value = 0
+          e_scale_up.value = 'stretch'
+          e_alt.value = 'default'
+        })
+
+        e_save.addEventListener('click', async e => {
+          try {
+            let dd = {
+              wall: {
+                ...wall_pos.as_obj(),
+                scale_up: e_scale_up.value,
+              },
+              display: display_pos.as_obj(),
+              rotation: int_from_str(e_r.value),
+            }
+            if (e_alt.value != "default") {
+              dd.alternative_idx = parseInt(e_alt.value)
+            }
+            await ib.device_data(dd)
+            ib.notification.success("Saved. Changes will be applied to the device now.")
+          } catch (ex) {
+            ib.notification.error(`Cannot set device data: ${ex}`)
+          }
+        })
+      })
+    </script>
+    </script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<html>
+  <body>
+    <select id='mode' class="form-control">
+      <option value="bar_thin_white">
+        Thin white bar
+      </option>
+      <option value="bar_thick_white">
+        Thick white bar
+      </option>
+      <option value="bar_thin_black">
+        Thin black bar
+      </option>
+      <option value="bar_thick_black">
+        Thick black bar
+      </option>
+      <option value="circle">
+        Circle
+      </option>
+      <option value="countdown">
+        Countdown
+      </option>
+    </select>
+    <div id='bottom'></div>
+    <script src='hosted.js'></script>
+    <script>
+      let mode = document.getElementById('mode')
+      ib.setDefaultStyle()
+      ib.onConfigUpdate(config => {
+        mode.value = config.mode || 'bar_thin_white'
+      })
+      const change = () => ib.set_config({
+        mode: mode.value,
+      })
+      mode.addEventListener("change", change)
+    </script>
+  </body>
+</html>
+
