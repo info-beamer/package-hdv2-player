@@ -244,7 +244,7 @@ slots, slot fusing allows continuous playback of those overlays. If slot
 fusing is disabled, each overlay will restart for each slot. This might
 make a difference when combined with the fade/reveal option below.
 
-### Fade/Reveal effect
+### Fade/Reveal effect (reveal)
 
 The player provide an option for controlling how transitions between
 content works: Videos and images can fade in/out, while scrollers can
