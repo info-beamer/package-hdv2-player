@@ -90,6 +90,7 @@ class Peer(object):
         self._msg_id_set = set()
 
     def update(self, device_id, pair_key, delta, ping, is_leader):
+        log('Peer %s: %f (leader:%s)' % (device_id, ping, is_leader))
         self._device_id = device_id
         self._pair_key = pair_key
         self._delta = delta
@@ -117,7 +118,7 @@ class Peer(object):
         deleted = 0
         while self._msg_id_order:
             discard_threshold, msg_id = self._msg_id_order[0]
-            if now < discard_threshold:
+            if discard_threshold > now:
                 break
             self._msg_id_order.pop(0)
             self._msg_id_set.remove(msg_id)
@@ -183,17 +184,23 @@ class Peer(object):
     def decode(self, pkt, expected_direction, arrival_group_time):
         mac, encrypted = pkt[:16], pkt[16:]
         if len(mac) != 16:
+            # log('discarding message: invalid length (1)')
             return None
         if hmac.HMAC(
             self._pair_key,
             encrypted,
             hashlib.sha256
         ).digest()[:16] != mac:
+            # log('discarding message: invalid signature (%d, %r)' % (
+            #     len(pkt), self._pair_key,
+            # ))
             return None
         msg_id, ciphertext = encrypted[:16], encrypted[16:]
         if len(msg_id) != 16:
+            # log('discarding message: invalid length (2)')
             return None
         if len(ciphertext) % 16:
+            # log('discarding message: invalid length (3)')
             return None
         cipher = AES.new(self._pair_key, AES.MODE_CBC, msg_id)
         message = cipher.decrypt(ciphertext)
@@ -202,9 +209,11 @@ class Peer(object):
         local_group_time = min(0xFFFFFFFF, int(arrival_group_time))
         version = info_byte & 0x7f
         if version != self._version:
+            # log('discarding message: invalid version')
             return None
         direction = info_byte >> 7
         if direction != expected_direction:
+            # log('discarding message: invalid direction')
             return None
         if local_group_time != 0xFFFFFFFF and remote_group_time != 0xFFFFFFFF:
             # remote and our time too far off?
@@ -216,6 +225,7 @@ class Peer(object):
         try:
             return json.loads(data.decode('zlib'))
         except Exception as err:
+            # log('discarding message: invalid content')
             return None
 
     def __repr__(self):
@@ -243,16 +253,14 @@ class PeerGroup(object):
         else:
             self._port = P2P_GROUP_BASE_PORT + metadata['node_idx']*10 + port_offset
 
-        # Every node on the device can calculate its own
-        # unique node_scope value based on port, instance_id
-        # and current work directory. Multiple devices
-        # with the same setup assigned will all calculate
-        # the same value. This avoid reusing the same
-        # pairwise keys across multiple peer groups running
-        # in different package services.
+        # Unique node_scope value based on instance_path
+        # and group name. Multiple devices with the same setup
+        # assigned will all calculate the same value. This
+        # avoid reusing the same pairwise keys across multiple
+        # peer groups running in different package services.
         self._node_scope = hashlib.sha256(
-            '%d:%d:%s%s' % (
-                self._port, metadata['instance_id'], os.getcwd(),
+            '%s:%s' % (
+                metadata['instance_path'],
                 ':%s' % group_name if group_name else '',
             )
         ).digest()
@@ -388,7 +396,10 @@ class PeerGroup(object):
                     direction = DIRECTION_PEER_TO_LEADER,
                     group_time = self._group_time,
                 )
-                self._sock.sendto(pkt, (self._leader.ip, self._port))
+                try:
+                    self._sock.sendto(pkt, (self._leader.ip, self._port))
+                except socket.error:
+                    pass
         if local_device is not None:
             self.on_peer_message(json.loads(json.dumps(message)), local_device.peer_info)
 
@@ -469,7 +480,7 @@ class PeerGroup(object):
                 pkt, (ip, port) = self._sock.recvfrom(2**16)
                 if port != self._port:
                     continue
-                receiver = None
+                message = receiver = None
                 with self._peers_lock:
                     peer = self._peers.get(ip)
                     if peer is None:
@@ -488,7 +499,7 @@ class PeerGroup(object):
                         )
                     else:
                         continue
-                if message is not None:
+                if receiver and message:
                     receiver(message, peer.peer_info)
             except Exception as err:
                 traceback.print_exc()
