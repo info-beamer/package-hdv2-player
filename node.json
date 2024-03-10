@@ -98,7 +98,7 @@
             "name": "asset",
             "type": "resource",
             "valid": ["image", "video", "child"],
-            "features": ["image4k"],
+            "features": ["image4k", "hevc"],
             "default": "empty.png"
         }, {
             "title": "Play time",
@@ -161,7 +161,7 @@
                 "condition": ["==", ["config", "alt_type", "value"], "item"],
                 "type": "resource",
                 "valid": ["image", "video", "child"],
-                "features": ["image4k"],
+                "features": ["image4k", "hevc"],
                 "default": "empty.png"
             }, {
                 "title": "Playlist",
@@ -267,7 +267,7 @@
                 "name": "asset",
                 "type": "resource",
                 "valid": ["child", "image"],
-                "features": ["image4k"],
+                "features": ["image4k", "hevc"],
                 "default": "example"
             }, {
                 "type": "section",
