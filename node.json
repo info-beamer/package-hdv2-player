@@ -267,7 +267,7 @@
                 "name": "asset",
                 "type": "resource",
                 "valid": ["child", "image"],
-                "features": ["image4k", "hevc"],
+                "features": ["image4k"],
                 "default": "example"
             }, {
                 "type": "section",
