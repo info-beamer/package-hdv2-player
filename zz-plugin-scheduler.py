@@ -64,7 +64,11 @@ class ItemGenerator(object):
                 metadata = item['asset']['metadata']
                 if 'duration' in metadata:
                     duration = metadata['duration']
-            duration = max(2, duration)
+
+            # Ensure there's at least a small gap between
+            # the end of playback of the previous item and
+            # the preloading of the next one.
+            duration = max(PRELOAD + 1, duration)
 
             if item['schedule'].serialize() == 'never':
                 # Skip any item never scheduled

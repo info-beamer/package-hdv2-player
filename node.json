@@ -105,7 +105,7 @@
             "ui_width": 2,
             "name": "duration",
             "type": "duration",
-            "hint": "How long should this item be displayed on screen. Use 0 to use automatically selected duration",
+            "hint": "How long should this item be displayed on screen. Use 0 to use automatically selected duration. Minimum 3 seconds.",
             "default": 10,
             "suggestions": [10, 20, 60, 120]
         }, {
