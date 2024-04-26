@@ -407,6 +407,13 @@ local function Display()
         return w, h
     end
 
+    local function size_as_table()
+        return {
+            width = w,
+            height = h,
+        }
+    end
+
     update_placement(0, full_quad)
 
     return {
@@ -415,6 +422,7 @@ local function Display()
         draw_video = draw_video;
         is_portrait = function() return is_portrait end;
         size = size;
+        size_as_table = size_as_table,
         frame_init = frame_init;
         frame_update = frame_update;
     }
@@ -1027,6 +1035,7 @@ local function preload(opt)
         helpers.dict_shallow_merge(
             base_player_info, playback_ctx, {
                 is_primary = true,
+                screen_size = Display.size_as_table(),
             }
         )
     ))
@@ -1043,6 +1052,7 @@ local function preload(opt)
                 overlay.player_info, playback_ctx, {
                     is_primary = false,
                     overlay_idx = overlay_idx, 
+                    screen_size = Display.size_as_table(),
                 }
             )
         ))
