@@ -1,7 +1,7 @@
 {
-    "name": "HD Image/Video Player V2 (Preview)",
+    "name": "HD Image/Video Player V2",
     "author": "Florian Wesch <fw@info-beamer.com>",
-    "desc": "Displays images and videos in a rotation",
+    "desc": "Displays images and videos in a rotation (Preview)",
     "repository": "https://github.com/info-beamer/package-hdv2-player",
     "platforms": ["pi/v7", "pi/epoch-2"],
     "lifecycle": "alpha",
