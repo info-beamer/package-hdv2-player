@@ -12,7 +12,7 @@ from player_plugin import (
     common_config, local_config,
 )
 
-PRELOAD = 8
+PRELOAD = 4
 MAX_SUSPEND_DEPTH = 4
 
 Item = namedtuple(
