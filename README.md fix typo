@@ -220,7 +220,7 @@ non-square pixels, it might happen that you need to generate a HDMI signal
 with with an aspect ratio different from the detected output resolution.
 
 Note that this also doesn't limit the generate output resolution. So you can
-still how 4K images on a 4K display without loss of resolution, even if you
+still show 4K images on a 4K display without loss of resolution, even if you
 select 1920x1080 canvas as 16:9 content will be upscaled to the physical
 resolution without loss of precision.
 
