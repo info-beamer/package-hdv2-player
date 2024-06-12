@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# Version bump beta-1
 import sys; sys.path.insert(0, '.pylib')
 import os, sys, traceback, hashlib, imp, re, shutil, json, time, threading
 from collections import namedtuple, defaultdict, OrderedDict
