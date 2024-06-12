@@ -372,6 +372,11 @@ doesn't have this problem, or be sure to use a WiFi network with a strong enough
 
 # Changelog
 
+## Version beta-1
+
+ * Support explicit start and end time within a schedule specification.
+   This updates is mandatory if you use such a schedule.
+
 ## Version alpha-6
 
  * Documentation and first release cleanup.

@@ -4,8 +4,8 @@
     "desc": "Displays images and videos in a rotation (Preview)",
     "repository": "https://github.com/info-beamer/package-hdv2-player",
     "platforms": ["pi/v7", "pi/epoch-2"],
-    "lifecycle": "alpha",
-    "version": "alpha-6",
+    "lifecycle": "beta",
+    "version": "beta-1",
     "embeddable_packages": [
         "https://github.com/info-beamer/package-hdv2-plugin-scroller.git",
         "https://cdn.infobeamer.com/bulk/package-cef-browser/package.links"
