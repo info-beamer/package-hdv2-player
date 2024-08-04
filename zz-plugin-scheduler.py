@@ -37,7 +37,10 @@ class AlternativeLooper(object):
 
 class ItemGenerator(object):
     def __init__(self):
-        self._item_idx = 0
+        # zero-indexed offset into the playlist. Start
+        # with -1 so the initial item after incrementing
+        # is item 0.
+        self._item_idx = -1
         self._item_idx_count = defaultdict(AlternativeLooper)
 
     def get_next(self):
@@ -107,6 +110,7 @@ class ItemGenerator(object):
                         )
                 if active:
                     potential_overlay_groups.append(overlay_group['_id'])
+
             return Item(
                 config_hash = config.config_hash,
                 item_idx = self._item_idx+1,
@@ -115,6 +119,8 @@ class ItemGenerator(object):
                 rnd = random.randint(0, 2**20),
                 ovr = potential_overlay_groups,
             )
+
+        # No playable item found?
         return None
 
 
