@@ -1091,7 +1091,7 @@ local Canvas = helpers.create_class{
 
     draw_image = function(self, res, pos, alpha, max_stretch_overwrite)
         local s, w, h = res:state()
-        if s == "loaded" then
+        if s == "loaded" or s == "finished" then
             local x1, y1, x2, y2 = pos:coords()
             local ox1, oy1, ox2, oy2 = helpers.scale_into(
                 x2-x1, y2-y1, w, h,
@@ -1106,7 +1106,7 @@ local Canvas = helpers.create_class{
 
     draw_video = function(self, res, pos, alpha, max_stretch_overwrite)
         local s, w, h = res:state()
-        if s == "loaded" or s == "paused" then
+        if s == "loaded" or s == "paused" or s == "finished" then
             local x1, y1, x2, y2 = pos:coords()
             local ox1, oy1, ox2, oy2 = helpers.scale_into(
                 x2-x1, y2-y1, w, h,
