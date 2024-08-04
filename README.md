@@ -372,6 +372,13 @@ doesn't have this problem, or be sure to use a WiFi network with a strong enough
 
 # Changelog
 
+## Version beta-2
+
+ * Start with first item on initial playback.
+ * Content-process content (like the browser) show their last frame if their
+   node directory (and service) is deleted due to switching to another setup
+   based on this package. This avoids showing just a black screen.
+
 ## Version beta-1
 
  * Support explicit start and end time within a schedule specification.
