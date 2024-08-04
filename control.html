@@ -84,7 +84,7 @@
     </div>
 
     <div class='row'>
-      <div class='col-md-9'>
+      <div class='col-md-9' id='wall-config'>
         <div class='panel panel-default wall'>
           <div class='panel-heading'>
             Wall content settings
@@ -140,7 +140,7 @@
           </div>
         </div>
       </div>
-      <div class='col-md-3'>
+      <div class='col-md-3' id='fullscreen-config'>
         <div class='panel panel-default'>
           <div class='panel-heading'>
             Fullscreen content settings
@@ -296,7 +296,35 @@
         }
       }
 
+      function has_fullscreen_content(playlist) {
+        for (let item of playlist) {
+          if (Number.isInteger(item)) // playlist
+            return true
+          if (item.slot_type == "fullscreen")
+            return true
+        }
+        return false
+      }
+
+      function has_wall_content(playlist) {
+        for (let item of playlist) {
+          if (Number.isInteger(item)) // playlist
+            continue
+          if (item.slot_type == "wall")
+            return true
+        }
+        return false
+      }
+
       ib.ready.then(async () => {
+        if (!has_fullscreen_content(ib.config.playlist)) {
+          document.getElementById('fullscreen-config').style.opacity = 0.5;
+        }
+
+        if (!has_wall_content(ib.config.playlist)) {
+          document.getElementById('wall-config').style.opacity = 0.5;
+        }
+
         update()
         setInterval(update, 5000)
 
