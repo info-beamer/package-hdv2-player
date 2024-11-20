@@ -428,7 +428,7 @@
             [1.20, "Max 20% stretch"],
             [1000, "Fill available space"]
         ],
-        "default": "keep_aspect"
+        "default": 1
     }, {
         "title": "Virtual resolution",
         "tab": "Advanced",

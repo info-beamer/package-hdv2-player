@@ -8,7 +8,7 @@
     "version": "beta-2",
     "embeddable_packages": [
         "https://github.com/info-beamer/package-hdv2-plugin-scroller.git",
-        "https://cdn.infobeamer.com/bulk/package-cef-browser/package.links"
+        "https://cdn.infobeamer.com/bulk/cef-browser.zip"
     ],
     "offline": {
         "support": "maybe",
