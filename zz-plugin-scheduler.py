@@ -1,9 +1,6 @@
-import random
+import random, time
 from itertools import count
-from datetime import datetime
 from collections import namedtuple, defaultdict
-
-from hosted.scheduler import utc_to_local
 
 from player_plugin import (
     log, sleep_until, start_worker,
@@ -49,11 +46,7 @@ class ItemGenerator(object):
             log("no common config")
             return None
 
-        tz = config.metadata_timezone
-        now = utc_to_local(datetime.utcnow(), tz).replace(
-            second = 0, microsecond = 0,
-        )
-        valid_time = now.year > 2000
+        now = time.time()
 
         # find next playable item within the common playlist
         playlist = config.playlist
@@ -61,6 +54,9 @@ class ItemGenerator(object):
         for probe in xrange(len(playlist)):
             self._item_idx = (self._item_idx + 1) % len(playlist)
             item = playlist[self._item_idx]
+            if not item['schedule'].is_active_at(now):
+                continue
+
             duration = item['duration']
             if duration == 0: # auto duration?
                 duration = 10
@@ -72,20 +68,6 @@ class ItemGenerator(object):
             # the end of playback of the previous item and
             # the preloading of the next one.
             duration = max(PRELOAD + 1, duration)
-
-            if item['schedule'].serialize() == 'never':
-                # Skip any item never scheduled
-                continue
-            elif valid_time:
-                # If we have a valid time, skip items that are
-                # not scheduled.
-                if not item['schedule'].is_active_at(tz, now):
-                    continue
-            else:
-                # If we do not have a likely correct time, skip
-                # any item that isn't always scheduled.
-                if item['schedule'].serialize() != 'always':
-                    continue
 
             potential_overlay_groups = []
             for overlay_group in overlay_groups:
@@ -99,7 +81,7 @@ class ItemGenerator(object):
                 for condition in overlay_group.get('conditions', ()):
                     condition_type = condition['condition_type']
                     if condition_type == 'schedule':
-                        active = active and condition['schedule'].is_active_at(tz, now)
+                        active = active and condition['schedule'].is_active_at(now)
                     elif condition_type == 'slot_type':
                         active = active and (
                             condition['slot_type'] == item['slot_type']

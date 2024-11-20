@@ -4,7 +4,7 @@
 #
 # https://github.com/info-beamer/package-sdk
 #
-# Copyright (c) 2014-2020 Florian Wesch <fw@info-beamer.com>
+# Copyright (c) 2014-2024 Florian Wesch <fw@info-beamer.com>
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -50,6 +50,29 @@ class OptionValueWrapper(object):
 class OptionSection(OptionValueWrapper):
     def is_selected(self, key):
         return key in self._value
+
+class OptionExpandedSchedule(object):
+    def __init__(self, value, schedules):
+        self._value = value
+        self._schedules = schedules
+
+    def within_range(self, start, duration, probe):
+        return start <= probe < start + duration
+
+    def is_active_at(self, unix_time):
+        if self._value == 'always':
+            return True
+        elif self._value == 'never':
+            return False
+        start, duration = self._schedules['range']
+        if not self.within_range(start, duration, unix_time):
+            return False
+        for start, duration in self._schedules['expanded'][self._value]:
+            if start > unix_time:
+                return False
+            elif self.within_range(start, duration, unix_time):
+                return True
+        return False
 
 def init_types():
     def type(fn):
@@ -446,7 +469,9 @@ class Configuration(object):
         self._path = path
         self._restart = False
         with open(os.path.join(self._path, "node.json")) as f:
-            self._options = json.load(f).get('options', [])
+            node_json = json.load(f)
+            self._expanded_schedules = node_json.get('expand_schedules', False)
+            self._options = node_json.get('options', [])
         self.parse_config_json()
 
     @property
@@ -473,6 +498,8 @@ class Configuration(object):
                 parsed[key] = value
             return parsed
 
+        schedules = config.get('__schedules')
+
         def parse_recursive(options, config):
             parsed = {}
             for option in options:
@@ -484,7 +511,12 @@ class Configuration(object):
                         items.append(parse_recursive(option['items'], item))
                     parsed[option['name']] = items
                     continue
-                parsed[option['name']] = _types[option['type']](config[option['name']])
+                if option['type'] == 'schedule' and self._expanded_schedules:
+                    parsed[option['name']] = OptionExpandedSchedule(
+                        config[option['name']], schedules
+                    )
+                else:
+                    parsed[option['name']] = _types[option['type']](config[option['name']])
             return parsed
 
         parsed = parse_recursive(self._options, config)

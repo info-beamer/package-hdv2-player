@@ -10,6 +10,7 @@
         "doc-*"
     ],
     "scratch_scope": "package",
+    "expand_schedules": true,
     "options": [{
         "title": "Content configuration",
         "type": "section"
