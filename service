@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Version bump beta-2
 import sys; sys.path.insert(0, '.pylib')
-import os, sys, traceback, hashlib, imp, re, shutil, json, time, threading
+import os, sys, traceback, hashlib, imp, re, shutil, json, time, \
+    socket, threading, inspect, Queue
 from collections import namedtuple, defaultdict, OrderedDict
-import Queue
 from cStringIO import StringIO
 
 from hosted import (
@@ -24,12 +24,20 @@ def log(msg, name='controller'):
     with log_lock:
         print >>sys.stderr, "[{}] {}".format(name, msg)
 
+class Plugin(object):
+    pass
+
+def rpc_call(fn):
+    fn.is_rpc = True
+    return fn
+
 class Plugins(object):
     PluginInfo = namedtuple("PluginInfo", "path source chksum full_name name import_name package_name")
-    LoadedPlugin = namedtuple("LoadedPlugin", "info instance api")
+    LoadedPlugin = namedtuple("LoadedPlugin", "info name instance api")
 
     def __init__(self, api_factory, plugin_pattern='^plugin.py$'):
-        self._plugins = {}
+        self._plugin_by_import = {}
+        self._plugin_by_name = {}
         self._configs = {'': config}
         self._config_refs = defaultdict(int)
         self._config_refs[''] += 1 # fix root config
@@ -39,6 +47,8 @@ class Plugins(object):
 
     def rescan(self):
         # print('[plugins] scanning..')
+        changed = False
+
         found_plugins = {}
         for path, childs, files in os.walk("."):
             if path == '.':
@@ -64,34 +74,52 @@ class Plugins(object):
 
         # Check existing plugins. Unload if either disappeared or if their source
         # checksum has changed.
-        for import_name, old_plugin in sorted(self._plugins.items()):
-            if import_name not in found_plugins or found_plugins[import_name].chksum != old_plugin.info.chksum:
+        for import_name, loaded_plugin in sorted(self._plugin_by_import.items()):
+            if (import_name not in found_plugins or
+                found_plugins[import_name].chksum != loaded_plugin.info.chksum
+            ):
                 try:
                     log('[plugins] unloading %s (%s)' % (
-                        old_plugin.info.import_name, old_plugin.info.chksum,
+                        import_name, loaded_plugin.info.chksum,
                     ))
-                    self.unload(old_plugin)
+                    self.unload(loaded_plugin)
                 except:
                     traceback.print_exc()
-                del self._plugins[import_name]
+                del self._plugin_by_import[import_name]
+                if loaded_plugin.name in self._plugin_by_name:
+                    del self._plugin_by_name[loaded_plugin.name]
+                changed = True
 
-        # Load all discovered plugins they are already loaded.
-        for import_name, new_plugin_info in sorted(found_plugins.items()):
-            if import_name not in self._plugins:
+        # Load all discovered plugins that are not already loaded.
+        for import_name, plugin_info in sorted(found_plugins.items()):
+            if import_name not in self._plugin_by_import:
                 try:
                     log('[plugins] loading %s (%s)' % (
-                        new_plugin_info.import_name, new_plugin_info.chksum,
+                        plugin_info.import_name, plugin_info.chksum,
                     ))
-                    instance, api = self.load(new_plugin_info)
+                    class_name, instance, api = self.load(plugin_info)
                 except:
-                    log('[plugins] failed to load %s (%s):' % (
-                        new_plugin_info.import_name, new_plugin_info.chksum,
+                    log('[plugins] WARNING: failed to load %s (%s):' % (
+                        plugin_info.import_name, plugin_info.chksum,
                     ))
                     traceback.print_exc()
-                    instance, api = None, None
-                self._plugins[import_name] = self.LoadedPlugin(
-                    new_plugin_info, instance, api
-                )
+                    class_name, instance, api = None, None, None
+                if class_name:
+                    name = os.path.join(plugin_info.path, class_name).replace('/', '.')
+                else:
+                    name = None
+                loaded_plugin = self.LoadedPlugin(plugin_info, name, instance, api)
+                self._plugin_by_import[import_name] = loaded_plugin
+                if not name:
+                    log('[plugins] WARNING: Plugin not loaded')
+                elif name in self._plugin_by_name:
+                    log('[plugins] WARNING: duplicate name "%s". Consider inheriting from "Plugin" with a custom class name' % name)
+                else:
+                    self._plugin_by_name[name] = loaded_plugin
+                changed = True
+
+        if changed:
+            self.list_all()
         # log('[plugins] scan complete')
 
     def reference_config(self, path):
@@ -111,12 +139,14 @@ class Plugins(object):
 
     def load(self, plugin_info):
         try:
-            # reference config
-            config = self.reference_config(plugin_info.path)
+            api_module = None
 
             # Prepare loading
             orig, sys.dont_write_bytecode = sys.dont_write_bytecode, True
             sys.path.insert(0, plugin_info.path)
+
+            # reference config
+            config = self.reference_config(plugin_info.path)
 
             # Create base package if not already done so
             if plugin_info.package_name and not plugin_info.package_name in sys.modules:
@@ -139,6 +169,10 @@ class Plugins(object):
             for method_name, method in all_api_methods:
                 setattr(module, method_name, method)
 
+            # Extra definitions
+            setattr(module, 'Plugin', Plugin)
+            setattr(module, 'rpc_call', rpc_call)
+
             # Load the plugin
             module = sys.modules[plugin_info.import_name] = imp.new_module(plugin_info.import_name)
             module.__file__ = plugin_info.full_name
@@ -146,15 +180,29 @@ class Plugins(object):
             exec(module_code, module.__dict__)
 
             # Create an instance
-            if not hasattr(module, 'Plugin'):
-                log("[plugins] WARNING: %s has not 'Plugin' class" % plugin_info.import_name)
-            return module.Plugin(), api
+            class_name = 'Plugin'
+            for name in dir(module):
+                obj = getattr(module, name)
+                if (inspect.isclass(obj) and
+                    issubclass(obj, Plugin) and
+                    obj is not Plugin
+                ):
+                    class_name = name
+            if not hasattr(module, class_name):
+                raise ValueError("%s has no 'Plugin' class" % plugin_info.import_name)
+
+            clazz = getattr(module, class_name)
+            if not inspect.isclass(clazz):
+                raise ValueError("%s's plugin is not a class" % class_name)
+            return class_name, clazz(), api
         except:
-            del sys.modules[plugin_info.import_name]
+            if plugin_info.import_name in sys.modules:
+                del sys.modules[plugin_info.import_name]
             self.dereference_config(plugin_info.path)
             raise
         finally:
-            del sys.modules[api_module]
+            if api_module and api_module in sys.modules:
+                del sys.modules[api_module]
             sys.path.remove(plugin_info.path)
             sys.dont_write_bytecode = orig
 
@@ -171,16 +219,27 @@ class Plugins(object):
 
     def list_all(self):
         log('--[ loaded plugins ]---------------------')
-        for import_name, plugin in sorted(self._plugins.items()):
-            log('%s -> %s (%s)' % (import_name, plugin.instance, plugin.info.path))
+        for import_name, loaded_plugin in sorted(self._plugin_by_import.items()):
+            log('%s (%s) -> %s (%s)' % (
+                import_name,
+                loaded_plugin.name,
+                loaded_plugin.instance,
+                loaded_plugin.info.path,
+            ))
         log('-----------------------------------------')
 
     def __iter__(self):
-        for import_name, plugin in sorted(self._plugins.items()):
+        for import_name, plugin in sorted(self._plugin_by_import.items()):
             yield plugin.instance
 
-    def get_instance_by_import_name(self, import_name):
-        plugin_info = self._plugins.get(import_name)
+    def get_instance_by_import(self, import_name):
+        plugin_info = self._plugin_by_import.get(import_name)
+        if plugin_info is None or plugin_info.instance is None:
+            return None
+        return plugin_info.instance
+
+    def get_instance_by_name(self, import_name):
+        plugin_info = self._plugin_by_name.get(import_name)
         if plugin_info is None or plugin_info.instance is None:
             return None
         return plugin_info.instance
@@ -199,6 +258,41 @@ class TVPower(object):
         self.set(True)
     def off(self):
         self.set(False)
+
+def service_listener(should_stop, wall, addr, decide_accept=lambda:True):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(addr)
+    while not should_stop():
+        data, addr = s.recvfrom(65535)
+        log('service message from %s: %s' % (
+            addr, data
+        ))
+        if not decide_accept():
+            continue
+        path, data = data.split(':', 1)
+        if path != 'plugin-rpc':
+            continue
+        try:
+            data = json.loads(data)
+            if not isinstance(data, list):
+                raise ValueError("Invalid plugin-rpc value")
+            if len(data) < 2:
+                raise ValueError("Too few arguments for plugin-rpc")
+            plugin, method, args = data[0], data[1], data[2:]
+            if not plugin:
+                raise ValueError("Plugin name cannot be empty")
+            if not isinstance(plugin, unicode):
+                raise ValueError("Invalid plugin name")
+            if not isinstance(method, unicode):
+                raise ValueError("Invalid method value")
+            if not re.match("^([a-z_]+)$", method):
+                raise ValueError("Invalid method value")
+            wall.send_to_leader(
+                plugin_rpc = [plugin, method, args]
+            )
+        except Exception as err:
+            log("Invalid service call JSON: %r" % (err,))
+
 
 ########################################
 
@@ -275,7 +369,7 @@ class API(object):
     def get_peers(self):
         return wall.peers
 
-    def sleep_until(self, t):
+    def sleep_until(self, t, interrupt=None):
         while 1:
             if not self.running:
                 raise StopThread("API shutdown")
@@ -283,7 +377,12 @@ class API(object):
             if now >= t:
                 break
             delta = min(1, t - now)
-            time.sleep(delta)
+            if interrupt:
+                if interrupt.wait(delta):
+                    return False
+            else:
+                time.sleep(delta)
+        return True
 
     def start_worker(self, fn, *args):
         self._workers.append(StoppableThread(fn, *args))
@@ -342,7 +441,7 @@ class API(object):
             self.sleep(2)
 
 ServerTransfer = namedtuple(
-    "ServerTransfer", 
+    "ServerTransfer",
     "timeout change_seq fname all_peers confirmed_peers success_cb cb_args"
 )
 
@@ -475,7 +574,7 @@ class Wall(OrderedEventGroup):
         common_configs = self._leader_common_configs[node_path]
 
         modified = False
-        
+
         # If the notifying device doesn't already have the reported
         # config marked as current: Update our information.
         if common_configs.get(peer_info.device_id) != config_key:
@@ -511,10 +610,12 @@ class Wall(OrderedEventGroup):
                 node_path, config_key
             ))
 
-    def rpc_common_config(self, node_path, config_key):
+    @rpc_call
+    def common_config(self, node_path, config_key):
         self._common_config[node_path] = config_key
 
-    def rpc_link_file(self, change_seq, fname):
+    @rpc_call
+    def link_file(self, change_seq, fname):
         self._chunk_client.link_chunk(change_seq, fname)
         if self.is_leader:
             transfer = self._server_transfers.get(change_seq)
@@ -526,14 +627,17 @@ class Wall(OrderedEventGroup):
             except Exception as err:
                 traceback.print_exc()
 
-    def rpc_lua(self, func_name, *args):
+    @rpc_call
+    def lua(self, func_name, *args):
         lua.get_method(func_name)(*args)
 
-    def rpc_leader_time(self, leader_os_time, leader_time):
+    @rpc_call
+    def leader_time(self, leader_os_time, leader_time):
         self._shared_os_time.update(leader_os_time)
         self._shared_leader_time.update(leader_time)
 
-    def rpc_tv_power(self, on):
+    @rpc_call
+    def tv_power(self, on):
         log('tv power is %r' % (on,))
         if on:
             self._tv_power.on()
@@ -554,6 +658,9 @@ class Wall(OrderedEventGroup):
             self.handle_config_update(
                 node_path, config_key, peer_info
             )
+        elif 'plugin_rpc' in message:
+            plugin, method, args = message['plugin_rpc']
+            self.synced_call(0.2, plugin, method, args)
 
     def chunk_server_loop(self, should_stop):
         log("starting chunk server")
@@ -634,14 +741,22 @@ class Wall(OrderedEventGroup):
             if plugin_name == '':
                 instance = self
             else:
-                instance = plugins.get_instance_by_import_name(plugin_name)
+                instance = plugins.get_instance_by_name(plugin_name)
                 if instance is None:
                     continue
-            method_name = 'rpc_' + fn
-            if not hasattr(instance, method_name):
+            method = None
+            if hasattr(instance, 'rpc_' + fn):
+                method = getattr(instance, 'rpc_' + fn)
+            elif hasattr(instance, fn):
+                method = getattr(instance, fn)
+                if not hasattr(method, 'is_rpc'):
+                    continue
+            if not method:
+                continue
+            if not callable(method):
                 continue
             try:
-                getattr(instance, method_name)(*args)
+                method(*args)
             except Exception as err:
                 traceback.print_exc()
 
@@ -655,7 +770,19 @@ plugins = Plugins(
     plugin_pattern='^zz-plugin(-.+)?.py$'
 )
 
-plugins.list_all()
+internal_listener = StoppableThread(
+    service_listener, wall,
+    ('127.0.0.1', 3000 + os.getuid())
+)
+
+def allow_external_control():
+    return config.remote_control
+
+external_listener = StoppableThread(
+    service_listener, wall,
+    ('0.0.0.0', 3000),
+    allow_external_control
+)
 
 while 1:
     time.sleep(2)

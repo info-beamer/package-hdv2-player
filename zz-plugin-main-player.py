@@ -1,4 +1,4 @@
-import random, time
+import random, time, threading
 from itertools import count
 from collections import namedtuple, defaultdict
 
@@ -7,10 +7,13 @@ from player_plugin import (
     local_time, tv_power,
     synced_lua_call,
     common_config, local_config,
+    Plugin, rpc_call
 )
 
-PRELOAD = 4
+PRELOAD = 1
 MAX_SUSPEND_DEPTH = 4
+
+INTERRUPT_PRELOAD = 0.5
 
 Item = namedtuple(
     "Item",
@@ -32,6 +35,22 @@ class AlternativeLooper(object):
     def next(self):
         return self._count() % (1*2*3*4*5*6*7*8*9*10)
 
+TagFilter= namedtuple(
+    "TagFilter",
+    "selector cycles"
+)
+
+def match_selector(selector, tags):
+    log("match filter: %r %r" % (selector, tags))
+    if isinstance(selector, unicode):
+        return selector in tags
+    elif isinstance(selector, list):
+        return any(
+            set(tag_set).issubset(tags)
+            for tag_set in selector
+        )
+    return False
+
 class ItemGenerator(object):
     def __init__(self):
         # zero-indexed offset into the playlist. Start
@@ -39,6 +58,17 @@ class ItemGenerator(object):
         # is item 0.
         self._item_idx = -1
         self._item_idx_count = defaultdict(AlternativeLooper)
+
+        self._tag_filters = []
+        self._tag_filter_cycle = 0
+
+    def reset_tag_filter(self):
+        self._tag_filters = []
+        self._tag_filter_cycle = 0
+
+    def apply_tag_filter(self, tag_filter):
+        log('appended tag filter: %r' % (tag_filter,))
+        self._tag_filters.append(tag_filter)
 
     def get_next(self):
         config = common_config()
@@ -53,9 +83,27 @@ class ItemGenerator(object):
         overlay_groups = config.overlay_groups
         for probe in xrange(len(playlist)):
             self._item_idx = (self._item_idx + 1) % len(playlist)
+
+            # At start of playlist with filters: See if filter expires
+            if self._item_idx == 0 and self._tag_filters:
+                self._tag_filter_cycle += 1
+                log("next round. tag filter cycle %d" % self._tag_filter_cycle)
+                max_cycles = self._tag_filters[0].cycles
+                if max_cycles is not None and self._tag_filter_cycle > max_cycles:
+                    self._tag_filters.pop(0)
+
             item = playlist[self._item_idx]
             if not item['schedule'].is_active_at(now):
                 continue
+
+            if self._tag_filters:
+                selector = self._tag_filters[0].selector
+                slot_tags = set(item['asset']['tags']) | (
+                    set(item['extra_tags'].split(','))
+                    if 'extra_tags' in item else set()
+                )
+                if not match_selector(selector, slot_tags):
+                    continue
 
             duration = item['duration']
             if duration == 0: # auto duration?
@@ -105,19 +153,52 @@ class ItemGenerator(object):
         # No playable item found?
         return None
 
-
-class Plugin(object):
+class MainPlayer(Plugin):
     def __init__(self):
         self._item_generator = ItemGenerator()
+        self._play_next_interrupt = threading.Event()
         start_worker(self.scheduler)
+
+    @rpc_call
+    def add_filter(self, selectors, cycles=None):
+        if not isinstance(selectors, list):
+            raise ValueError("invalid selectors value")
+        selector = [set(tags) for tags in selectors]
+        if cycles is not None:
+            cycles = int(cycles)
+        self._item_generator.apply_tag_filter(TagFilter(
+            selector, cycles
+        ))
+
+    @rpc_call
+    def reset_filter(self):
+        self._item_generator.reset_tag_filter()
+
+    @rpc_call
+    def replace_filter(self, selectors, cycles=None):
+        self.reset_filter()
+        self.add_filter(selectors, cycles)
+
+    @rpc_call
+    def play_next(self):
+        log('triggering next item')
+        self._play_next_interrupt.set()
 
     def scheduler(self, should_stop):
         next_switch = local_time() + 0.1 + PRELOAD
         suspend_depth = 0
 
         while not should_stop():
-            # Wake up PRELOAD seconds before the next switch
-            sleep_until(next_switch - PRELOAD)
+            # Wake up PRELOAD seconds before the next switch..
+            # .. unless interrupted
+            self._play_next_interrupt = threading.Event()
+            if not sleep_until(
+                next_switch - PRELOAD,
+                self._play_next_interrupt
+            ):
+                # Interrupted?
+                log("Interrupted. Playing next item in %.fs" % INTERRUPT_PRELOAD)
+                next_switch = local_time() + INTERRUPT_PRELOAD
 
             # Decide on next item
             should_blank = local_config().blank
@@ -153,6 +234,7 @@ class Plugin(object):
             # Now figure out how much time we have left until
             # the switch. Schedule switching accordingly.
             switch_time = next_switch - local_time()
+            log("switching time is %f" % (switch_time,))
             synced_lua_call(switch_time, 'switch')
 
             # Sleep until all screens have switched

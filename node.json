@@ -491,13 +491,14 @@
         "title": "Remote control",
         "ui_width": 4,
         "tab": "Advanced",
-        "name": "remote_port",
+        "name": "remote_control",
         "hint": "Opens UDP to network. Can be used to manually trigger configured playlist slots.",
         "doc_link": true,
         "type": "select",
         "options": [
-            [0, "Not yet supported"]
+            [false, "Allow API control only"],
+            [true, "Allow local network control"]
         ],
-        "default": 0
+        "default": false
     }]
 }

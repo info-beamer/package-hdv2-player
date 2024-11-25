@@ -5,10 +5,10 @@ from hosted.scheduler import utc_to_local
 
 from player_plugin import (
     repeated_call, wall_time, synced_lua_call,
-    common_config, send_local_node_data,
+    common_config, send_local_node_data, Plugin,
 )
 
-class Plugin(object):
+class SharedTime(Plugin):
     def __init__(self):
         repeated_call(2, self.send_time)
         repeated_call(1, self.send_debug_time)
