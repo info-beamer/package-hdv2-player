@@ -160,6 +160,10 @@ class MainPlayer(Plugin):
         start_worker(self.scheduler)
 
     @rpc_call
+    def reset_filter(self):
+        self._item_generator.reset_tag_filter()
+
+    @rpc_call
     def add_filter(self, selectors, cycles=None):
         if not isinstance(selectors, list):
             raise ValueError("invalid selectors value")
@@ -171,11 +175,7 @@ class MainPlayer(Plugin):
         ))
 
     @rpc_call
-    def reset_filter(self):
-        self._item_generator.reset_tag_filter()
-
-    @rpc_call
-    def replace_filter(self, selectors, cycles=None):
+    def set_filter(self, selectors, cycles=None):
         self.reset_filter()
         self.add_filter(selectors, cycles)
 
