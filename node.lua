@@ -109,7 +109,7 @@ local function PlayerStack()
                 -- if only for primary, then if the layer is the
                 -- primary layer.
                 fuse == "primary" and new_player.ctx.is_primary or
-                
+
                 -- If overlay, then only fuse if not primary
                 fuse == "overlays" and not new_player.ctx.is_primary or
 
@@ -233,7 +233,7 @@ local function PlayerStack()
 
         for idx, player in ipairs(active_layers) do
             player.ctx.now = now
-            player.ctx.progress = math.max(0, math.min(1, 
+            player.ctx.progress = math.max(0, math.min(1,
                 1 / player.ctx.duration * (sys.now() - player.ctx.started)
             ))
             player.ctx.reveal = math.min(
@@ -478,7 +478,7 @@ local function debug_overlay(ctx)
     black:draw(0, 0, WIDTH, HEIGHT, 0.6)
     local time = SharedTime.get()
     local x = (time * 800) % WIDTH
-    local y = (time * 800) % HEIGHT 
+    local y = (time * 800) % HEIGHT
     red:draw(0, y-10, WIDTH, y+10, 0.5)
     green:draw(x-10, 0, x+10, HEIGHT, 0.5)
 
@@ -762,6 +762,18 @@ function PluginLoader.before_load(child, api)
     api.wall_time = SharedTime.get
 end
 
+util.data_mapper{
+    ["plugin/(.*)/(.*)"] = function(child_name, name, raw)
+        local module = PluginLoader.modules[child_name]
+        if module then
+            local handler = module[string.format("event_%s", name)]
+            if handler then
+                return handler(json.decode(raw))
+            end
+        end
+    end
+}
+
 -- Players ---------------------------------------------------------
 
 local Player = helpers.create_class{
@@ -954,7 +966,7 @@ local function get_next_active_overlays(
                 -- Continue the evualuation on which overlays are
                 -- active. Unlike within python this decision now
                 -- depends on the individual base player's properties.
-                local condition_type = condition.condition_type 
+                local condition_type = condition.condition_type
                 if condition_type == "content_type" then
                     active = active and condition.content_type == base_player_info.asset_type
                 elseif condition_type == "not_content_type" then
@@ -1051,7 +1063,7 @@ local function preload(opt)
             helpers.dict_shallow_merge(
                 overlay.player_info, playback_ctx, {
                     is_primary = false,
-                    overlay_idx = overlay_idx, 
+                    overlay_idx = overlay_idx,
                     screen_size = Display.size_as_table(),
                 }
             )

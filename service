@@ -366,6 +366,9 @@ class API(object):
     def send_local_node_data(self, path, **data):
         node.send_json('/' + os.path.join(self._plugin_info.path, path), data)
 
+    def call_plugin_event(self, name, **data):
+        node.send_json('/plugin/' + os.path.join(self._plugin_info.path, name), data)
+
     def get_peers(self):
         return wall.peers
 
