@@ -428,12 +428,15 @@ class API(object):
 
     def _config_watcher(self, should_stop):
         while not should_stop():
-            config = self._config.parsed # snapshot
+            config = self._config.parsed # get read-only snapshot
             config_key = '%s:%d' % (
                 config.config_hash, config.config_rev,
             )
             if not config_key in self._loaded_configs:
                 self._loaded_configs[config_key] = config
+                log('detected new config %s for plugin %r' % (
+                    config_key, self._plugin_info.path
+                ))
                 while len(self._loaded_configs) > 5:
                     self._loaded_configs.popitem(last=False)
             wall.send_to_leader(
@@ -480,6 +483,7 @@ class Wall(OrderedEventGroup):
         self._transfer_lock = threading.Lock()
 
         self._leader_common_configs = defaultdict(dict)
+        self._last_config_propagate = monotonic_time()
         self._common_config = {}
 
         self._client_transfers = Queue.Queue()
@@ -576,17 +580,20 @@ class Wall(OrderedEventGroup):
         # log("config update from %r: %r" % (peer_info, config_key))
         common_configs = self._leader_common_configs[node_path]
 
-        modified = False
+        send_config_key_to_peers = False
 
         # If the notifying device doesn't already have the reported
         # config marked as current: Update our information.
         if common_configs.get(peer_info.device_id) != config_key:
             common_configs[peer_info.device_id] = config_key
-            modified = True
+            send_config_key_to_peers = True
 
         # If there's more than one config currently active across
         # the wall: Bail out as there can't be a common one
         if len(set(common_configs.values())) != 1:
+            log('path %r: multiple configs found: %s' % (
+                node_path, sorted(common_configs.values())
+            ))
             return
 
         config_peers = set(common_configs.keys())
@@ -601,20 +608,40 @@ class Wall(OrderedEventGroup):
             if device_id not in all_peers:
                 log('lost device %r' % (device_id,))
                 del common_configs[device_id]
-                modified = True
+                send_config_key_to_peers = True
 
-        # Something changed and all devices accounted for?
+        now = monotonic_time()
+
+        # Forced sync every X seconds, in case a broadcast is
+        # missed by a peers.
+        if self._last_config_propagate + 10 < now:
+            send_config_key_to_peers = True
+
+        # Nothing to sync as either no need to (there wasn't
+        # any change) or the last sync is recent enough.
+        if not send_config_key_to_peers:
+            return
+
         # Together with the '!= 1' check above this means
         # there is now a complete group of devices sharing
         # the same config. Propagate this information to
         # all devices.
-        if modified and config_peers == all_peers:
+        if config_peers == all_peers:
             self.synced_call(0.5, '', 'common_config', (
                 node_path, config_key
+            ))
+            log('path %r: updating %d peers to common config %s' % (
+                node_path, len(config_peers), config_key
+            ))
+            self._last_config_propagate = now
+        else:
+            log('path %r: no common config to sync: %d/%d config peers' % (
+                node_path, len(config_peers), len(all_peers)
             ))
 
     @rpc_call
     def common_config(self, node_path, config_key):
+        log('path %r: common config is now %s' % (node_path, config_key,))
         self._common_config[node_path] = config_key
 
     @rpc_call

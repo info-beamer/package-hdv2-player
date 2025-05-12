@@ -384,7 +384,10 @@ class PeerGroup(object):
                     except socket.error:
                         pass
         if local_device is not None:
-            self.on_leader_message(json.loads(json.dumps(message)), local_device.peer_info)
+            try:
+                self.on_leader_message(json.loads(json.dumps(message)), local_device.peer_info)
+            except Exception as err:
+                traceback.print_exc()
 
     def send_to_leader(self, **message):
         local_device = None
@@ -401,7 +404,10 @@ class PeerGroup(object):
                 except socket.error:
                     pass
         if local_device is not None:
-            self.on_peer_message(json.loads(json.dumps(message)), local_device.peer_info)
+            try:
+                self.on_peer_message(json.loads(json.dumps(message)), local_device.peer_info)
+            except Exception as err:
+                traceback.print_exc()
 
     ##--------------------------------
 

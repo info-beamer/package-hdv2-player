@@ -438,7 +438,8 @@
         "hint": "You can force a virtual resolution here to make the presentation independant from the screen resolution of the device(s).",
         "type": "select",
         "options": [
-            [[1920, 1080], "Force 1920x1080 (16:9)"],
+            [[3840, 2160], "Force 4K (16:9)"],
+            [[1920, 1080], "Force FullHD (16:9)"],
             [[1280, 1024], "Force 1280x1024 (5:4)"],
             [[1024,  768], "Force 1024x768 (4:3)"],
             [false,        "Use detected native screen"]
