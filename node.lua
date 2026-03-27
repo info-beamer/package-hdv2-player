@@ -9,6 +9,7 @@ local json = require "json"
 local loader = require "loader"
 local helpers = require "helpers"
 local easing = require "easing"
+local pop = require "pop"
 local scissors = sys.get_ext "scissors"
 local font = resource.load_font "font.ttf"
 local black = resource.create_colored_texture(0, 0, 0, 1)
@@ -745,15 +746,6 @@ util.json_watch("config.json", function(config)
     node.gc()
 end)
 
--- local function submit_pop(item, duration)
---     py.submit_pop({
---         play_start = os.time(),
---         duration = duration,
---         asset_id = item.asset_id,
---         asset_filename = item.asset_filename,
---     })
--- end
-
 -- Child nodes -------------------------------------------------------
 
 local PluginLoader = loader.setup "zz-plugin.lua"
@@ -790,6 +782,19 @@ local Player = helpers.create_class{
     layout = function(self, canvas)
         return canvas:full()
     end;
+    submit_pop = function(self)
+        local extra = {}
+        local tags = helpers.set_to_list(self.ctx.tags)
+        if #tags > 0 then
+            extra.tags = tags
+        end
+        pop.submit(
+            self.ctx.asset_id,
+            self.ctx.filename,
+            self.ctx.duration,
+            extra
+        )
+    end;
     draw = function(self, canvas, pos)
     end;
     dispose = function()
@@ -812,6 +817,9 @@ local ImagePlayer = Player.extend{
             fastload = true,
         }
         self.need_dispose = not old_res
+    end;
+    switch = function(self)
+        self:submit_pop()
     end;
     draw = function(self, canvas, pos)
         canvas:draw_image(self.res, pos, self.ctx.reveal)
@@ -853,6 +861,7 @@ local VideoPlayer = Player.extend{
     end;
     switch = function(self)
         self.res:start()
+        self:submit_pop()
     end;
     draw = function(self, canvas, pos)
         canvas:draw_video(self.res, pos, self.ctx.reveal)
@@ -1017,7 +1026,7 @@ local function preload(opt)
             asset_type = "fallback",
             asset_id = "fallback",
             filename = "fallback",
-            tags = {"fallback"},
+            tags = helpers.list_to_set{"fallback"},
             file = nil,
             child_config = {},
         }

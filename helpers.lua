@@ -171,6 +171,14 @@ local function set_union(...)
     return union
 end
 
+local function set_to_list(set)
+    local list = {}
+    for k, _ in pairs(set) do
+        list[#list+1] = k
+    end
+    return list
+end
+
 local BAR = 'IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII........................................'
 local function progress_bar_string(progress)
     progress = math.max(0, math.min(1, progress))
@@ -191,5 +199,6 @@ return {
     str_split = str_split,
     set_has_overlap = set_has_overlap,
     set_union = set_union,
+    set_to_list = set_to_list,
     create_class = create_class,
 }
